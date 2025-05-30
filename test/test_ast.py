@@ -1,3 +1,4 @@
+import itertools
 import pytest
 
 from pyppl.ast import (
@@ -217,6 +218,22 @@ def test_variablenode_eval():
         unbound_var_node.eval(env)
 
 
+def test_truenode_bool():
+    """Test TrueNode is converted to True"""
+    assert bool(TrueNode()) is True
+
+
+def test_falsenode_bool():
+    """Test TrueNode is converted to True"""
+    assert bool(FalseNode()) is False
+
+
+def test_purenodes_not_converted_to_bool():
+    """Test that PureNodes are not converted to bools by default"""
+    with pytest.raises(ValueError):
+        bool(PureNode())
+
+
 def test_ifelsenode_eval_true_condition():
     """Test IfElseNode.eval with a true condition."""
     env = Environment()
@@ -355,3 +372,22 @@ def test_sequencenode_sample(mocker):
 
     # Verify the binding was actually added to the environment
     assert env.get_binding(var_name) is assigned_value
+
+
+def test_complex_cons_possible_vals():
+    """Test possible Cons values"""
+    env = Environment({v: set([TrueNode(), FalseNode()]) for v in ["x", "y"]})
+    first_vals = IfElseNode(var("x"), FalseNode(), TrueNode())
+    rest_vals = IfElseNode(var("y"), ConsNode(TrueNode(), NilNode()), NilNode())
+    cons = ConsNode(first_vals, rest_vals)
+    possible = cons.possible_values(env)
+    expected = set(
+        [
+            ConsNode(h, t)
+            for h, t in itertools.product(
+                [FalseNode(), TrueNode()], [ConsNode(TrueNode(), NilNode()), NilNode()]
+            )
+        ]
+    )
+
+    assert possible == expected

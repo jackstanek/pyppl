@@ -1,14 +1,20 @@
 import abc
 import itertools
 import random
+from dataclasses import dataclass, field
+from typing import Dict, List, Any, Set, Optional
 
 
+@dataclass
 class Environment:
     """Naming environment for expression evaluation"""
+    scopes: List[Dict[str, Any]] = field(default_factory=list)
 
-    def __init__(self):
+    def __init__(self, initial_vals: Optional[Dict[str, Any]] = None):
         """Initializes an environment"""
-        self.scopes = [{}]
+        if initial_vals is None:
+            initial_vals = {}
+        self.scopes = [initial_vals]
 
     def add_scope(self):
         """Add a scope to the stack"""
@@ -18,7 +24,7 @@ class Environment:
         """Remove a scope from the stack"""
         self.scopes.pop()
 
-    def add_binding(self, name: str, val):
+    def add_binding(self, name: str, val: Any):
         """Add a binding to the local scope
         Args:
             name: variable name to add to scope
@@ -44,16 +50,22 @@ class Environment:
 # --- Base AST Node Classes ---
 
 
+@dataclass(frozen=True)
 class ASTNode(abc.ABC):
     """
     Abstract base class for all Abstract Syntax Tree nodes.
     Provides a common interface for AST elements.
     """
 
+    def possible_values(self, env: Environment) -> Set["PureNode"]:
+        """Determine possible values that this node could evaluate to"""
+        return set()
+
 
 # --- Pure (p) Classes ---
 
 
+@dataclass(frozen=True)
 class PureNode(ASTNode):
     """
     Abstract base class for expression (p) nodes.
@@ -65,10 +77,6 @@ class PureNode(ASTNode):
 
     def __bool__(self) -> bool:
         raise ValueError(f"truthiness check on non-boolean value {self}")
-
-    def possible_values(self, env: Environment) -> set["PureNode"]:
-        """Determine possible values that this node could evaluate to"""
-        return set()
 
 
 def var(name: str) -> "PureNode":
@@ -83,82 +91,76 @@ def boolean(val: bool) -> "PureNode":
     return FalseNode()
 
 
+@dataclass(frozen=True)
 class VariableNode(PureNode):
     """
     Represents a variable 'x' in a expression.
     Grammar: x
     """
 
-    def __init__(self, name: str):
+    name: str
+
+    def __post_init__(self):
         """
         Initializes a VariableNode.
 
         Args:
             name: The name of the variable (e.g., 'a', 'b').
         """
-        if not isinstance(name, str) or not name:
+        if not isinstance(self.name, str) or not self.name:
             raise ValueError("Variable name must be a non-empty string.")
-        self.name = name
-
-    def __repr__(self):
-        return f"VariableNode(name='{self.name}')"
 
     def eval(self, env: Environment) -> PureNode:
         return env.get_binding(self.name)
 
-    def possible_values(self, env: Environment):
+    def possible_values(self, env: Environment) -> Set[PureNode]:
+        # Original code returns a single PureNode, but the signature expects a
+        # set. This will return a set containing the single possible value.
+        # env.get_binding(self.name) will return a Set[PureNode] when called in
+        # the context of possible_values.
         return env.get_binding(self.name)
 
 
+@dataclass(frozen=True)
 class TrueNode(PureNode):
     """
     Represents the boolean literal 'tt' (true) in a expression.
     Grammar: tt
     """
 
-    def __init__(self):
-        # No specific data needed for a constant 'true' value
-        pass
-
-    def __repr__(self):
-        return "TrueNode()"
-
     def __bool__(self) -> bool:
         return True
 
-    def possible_values(self, env: Environment) -> set[PureNode]:
-        return set([self])
+    def possible_values(self, env: Environment) -> Set[PureNode]:
+        return {self}
 
 
+@dataclass(frozen=True)
 class FalseNode(PureNode):
     """
     Represents the boolean literal 'ff' (false) in a expression.
     Grammar: ff
     """
 
-    def __init__(self):
-        # No specific data needed for a constant 'false' value
-        pass
-
-    def __repr__(self):
-        return "FalseNode()"
-
     def __bool__(self) -> bool:
         return False
 
-    def possible_values(self, env: Environment) -> set[PureNode]:
-        return set([self])
+    def possible_values(self, env: Environment) -> Set[PureNode]:
+        return {self}
 
 
+@dataclass(frozen=True)
 class IfElseNode(PureNode):
     """
     Represents an 'if p then p else p' conditional expression.
     Grammar: if p then p else p
     """
 
-    def __init__(
-        self, condition: PureNode, true_branch: PureNode, false_branch: PureNode
-    ):
+    condition: PureNode
+    true_branch: PureNode
+    false_branch: PureNode
+
+    def __post_init__(self):
         """
         Initializes an IfElseNode.
 
@@ -167,43 +169,41 @@ class IfElseNode(PureNode):
             true_branch: The expression to execute if condition is true (an instance of PureNode).
             false_branch: The expression to execute if condition is false (an instance of PureNode).
         """
-        if not isinstance(condition, PureNode):
+        if not isinstance(self.condition, PureNode):
             raise TypeError("Condition must be an instance of PureNode.")
-        if not isinstance(true_branch, PureNode):
+        if not isinstance(self.true_branch, PureNode):
             raise TypeError("True branch must be an instance of PureNode.")
-        if not isinstance(false_branch, PureNode):
+        if not isinstance(self.false_branch, PureNode):
             raise TypeError("False branch must be an instance of PureNode.")
-
-        self.condition = condition
-        self.true_branch = true_branch
-        self.false_branch = false_branch
-
-    def __repr__(self):
-        return (
-            f"IfElseNode(condition={self.condition}, "
-            f"true_branch={self.true_branch}, "
-            f"false_branch={self.false_branch})"
-        )
 
     def eval(self, env: Environment) -> PureNode:
         cond_val = self.condition.eval(env)
-        if cond_val:
+        if bool(cond_val):  # Use bool() explicitly as PureNode has a custom __bool__
             return self.true_branch.eval(env)
         return self.false_branch.eval(env)
 
-    def possible_values(self, env: Environment) -> set[PureNode]:
-        return self.true_branch.possible_values(
-            env
-        ) | self.false_branch.possible_values(env)
+    def possible_values(self, env: Environment) -> Set[PureNode]:
+        cond_vals = self.condition.possible_values(env)
+        vals = set()
+        for cond_val in cond_vals:
+            if bool(cond_val):
+                vals |= self.true_branch.possible_values(env)
+            else:
+                vals |= self.false_branch.possible_values(env)
+        return vals
 
 
+@dataclass(frozen=True)
 class ConsNode(PureNode):
     """
     Represents a 'cons p p' expression.
     Grammar: cons p p
     """
 
-    def __init__(self, head: PureNode, tail: PureNode):
+    head: PureNode
+    tail: PureNode
+
+    def __post_init__(self):
         """
         Initializes a ConsNode.
 
@@ -211,20 +211,16 @@ class ConsNode(PureNode):
             head: The first expression (an instance of PureNode).
             tail: The second expression (an instance of PureNode).
         """
-        if not isinstance(head, PureNode):
+        # Type validation moved to __post_init__
+        if not isinstance(self.head, PureNode):
             raise TypeError("Head must be an instance of PureNode.")
-        if not isinstance(tail, PureNode):
+        if not isinstance(self.tail, PureNode):
             raise TypeError("Tail must be an instance of PureNode.")
-        self.head = head
-        self.tail = tail
-
-    def __repr__(self):
-        return f"ConsNode(head={self.head}, tail={self.tail})"
 
     def eval(self, env: Environment) -> PureNode:
         return ConsNode(self.head.eval(env), self.tail.eval(env))
 
-    def possible_values(self, env: Environment) -> set[PureNode]:
+    def possible_values(self, env: Environment) -> Set[PureNode]:
         return set(
             ConsNode(phead, ptail)
             for phead, ptail in itertools.product(
@@ -233,26 +229,21 @@ class ConsNode(PureNode):
         )
 
 
+@dataclass(frozen=True)
 class NilNode(PureNode):
     """
     Represents a 'nil' value.
     Grammar: nil
     """
 
-    def __init__(self):
-        # No specific data needed for a constant 'nil' value
-        pass
-
-    def __repr__(self):
-        return "NilNode()"
-
-    def possible_values(self, env: Environment) -> set[PureNode]:
-        return set([self])
+    def possible_values(self, env: Environment) -> Set[PureNode]:
+        return {self}
 
 
 # --- Expression (e) Classes ---
 
 
+@dataclass(frozen=True)
 class ExpressionNode(ASTNode):
     """
     Abstract base class for expression (e) nodes.
@@ -262,7 +253,7 @@ class ExpressionNode(ASTNode):
     def sample(self, env: Environment) -> PureNode:
         """Sample a value from the program distribution"""
 
-    def sample_toplevel(self, k=1) -> list[PureNode]:
+    def sample_toplevel(self, k: int = 1) -> List[PureNode]:
         """Sample at the top-level with an empty environment
 
         Args:
@@ -274,68 +265,72 @@ class ExpressionNode(ASTNode):
         return [self.sample(Environment()) for _ in range(k)]
 
 
+@dataclass(frozen=True)
 class ReturnNode(ExpressionNode):
     """
     Represents a 'return p' expression.
     Grammar: return p
     """
 
-    def __init__(self, value: PureNode):
+    value: PureNode
+
+    def __post_init__(self):
         """
         Initializes a ReturnNode.
 
         Args:
             value: The pure value to be returned (an instance of PureNode).
         """
-        if not isinstance(value, PureNode):
+        if not isinstance(self.value, PureNode):
             raise TypeError("Return value must be an instance of PureNode.")
-        self.value = value
-
-    def __repr__(self):
-        return f"ReturnNode(value={self.value})"
 
     def sample(self, env: Environment) -> PureNode:
         return self.value.eval(env)
 
+    def possible_values(self, env: Environment) -> Set[PureNode]:
+        return self.value.possible_values(env)
 
+
+@dataclass(frozen=True)
 class FlipNode(ExpressionNode):
     """
     Represents a 'flip theta' expression.
     Grammar: flip theta
     """
 
-    def __init__(self, theta: float):
+    theta: float
+
+    def __post_init__(self):
         """
         Initializes a FlipNode.
 
         Args:
             theta: The probability value (a float between 0.0 and 1.0).
         """
-        if not isinstance(theta, (int, float)):
+        if not isinstance(self.theta, (int, float)):
             raise TypeError("Theta must be a number.")
-        if not (0.0 <= theta <= 1.0):
+        if not (0.0 <= self.theta <= 1.0):
             raise ValueError("Theta must be between 0.0 and 1.0 (inclusive).")
-        self.theta = float(theta)
-
-    def __repr__(self):
-        return f"FlipNode(theta={self.theta})"
 
     def sample(self, env: Environment) -> PureNode:
         return boolean(random.random() < self.theta)
 
+    def possible_values(self, env: Environment) -> Set[PureNode]:
+        return {TrueNode(), FalseNode()}
 
+
+@dataclass(frozen=True)
 class SequenceNode(ExpressionNode):
     """
     Represents a 'x <- e; e' sequential expression.
     Grammar: x <- e; e
     """
 
-    def __init__(
-        self,
-        variable_name: str,
-        assignment_expr: ExpressionNode,
-        next_expr: ExpressionNode,
-    ):
+    variable_name: str
+    assignment_expr: ExpressionNode
+    next_expr: ExpressionNode
+
+    def __post_init__(self):
         """
         Initializes a SequenceNode.
 
@@ -344,27 +339,21 @@ class SequenceNode(ExpressionNode):
             assignment_expr: The expression 'e' whose result is assigned to 'x' (an instance of ExpressionNode).
             next_expr: The subsequent expression 'e' to execute (an instance of ExpressionNode).
         """
-        if not isinstance(variable_name, str) or not variable_name:
+        if not isinstance(self.variable_name, str) or not self.variable_name:
             raise ValueError("Variable name must be a non-empty string.")
-        if not isinstance(assignment_expr, ExpressionNode):
+        if not isinstance(self.assignment_expr, ExpressionNode):
             raise TypeError(
                 "Assignment expression must be an instance of ExpressionNode."
             )
-        if not isinstance(next_expr, ExpressionNode):
+        if not isinstance(self.next_expr, ExpressionNode):
             raise TypeError("Next expression must be an instance of ExpressionNode.")
-
-        self.variable_name = variable_name
-        self.assignment_expr = assignment_expr
-        self.next_expr = next_expr
-
-    def __repr__(self):
-        return (
-            f"SequenceNode(variable_name='{self.variable_name}', "
-            f"assignment_expr={self.assignment_expr}, "
-            f"next_expr={self.next_expr})"
-        )
 
     def sample(self, env: Environment) -> PureNode:
         bind_val = self.assignment_expr.sample(env)
         env.add_binding(self.variable_name, bind_val)
         return self.next_expr.sample(env)
+
+    def possible_values(self, env: Environment) -> Set[PureNode]:
+        assgn_vals = self.assignment_expr.possible_values(env)
+        env.add_binding(self.variable_name, assgn_vals)
+        return self.next_expr.possible_values(env)
