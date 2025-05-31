@@ -374,20 +374,31 @@ def test_sequencenode_sample(mocker):
     assert env.get_binding(var_name) is assigned_value
 
 
-def test_complex_cons_possible_vals():
-    """Test possible Cons values"""
-    env = Environment({v: set([TrueNode(), FalseNode()]) for v in ["x", "y"]})
-    first_vals = IfElseNode(var("x"), FalseNode(), TrueNode())
-    rest_vals = IfElseNode(var("y"), ConsNode(TrueNode(), NilNode()), NilNode())
-    cons = ConsNode(first_vals, rest_vals)
-    possible = cons.possible_values(env)
-    expected = set(
-        [
-            ConsNode(h, t)
-            for h, t in itertools.product(
-                [FalseNode(), TrueNode()], [ConsNode(TrueNode(), NilNode()), NilNode()]
-            )
-        ]
+def test_seq_possible_vals_return():
+    """Test sequencing possible values with a return"""
+    env = Environment()
+    expr = SequenceNode("x", FlipNode(0.5), ReturnNode(var("x")))
+
+    assert expr.possible_vals(env) == {TrueNode(), FalseNode()}
+
+
+def test_seq_return_inference():
+    """Test sequencing a flip and a return"""
+    env = Environment()
+    expr = SequenceNode("x", FlipNode(0.5), ReturnNode(var("x")))
+    assert expr.infer(env, TrueNode()) == 0.5
+
+
+def test_seq_flip_inference():
+    """Test sequencing flip values"""
+    env = Environment()
+    expr = SequenceNode(
+        "x",
+        FlipNode(0.5),
+        SequenceNode(
+            "y", FlipNode(0.5), ReturnNode(IfElseNode(var("x"), var("y"), FalseNode()))
+        ),
     )
 
-    assert possible == expected
+    assert expr.infer(env, TrueNode()) == 0.25
+    assert expr.infer(env, FalseNode()) == 0.75

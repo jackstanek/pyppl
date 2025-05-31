@@ -1,13 +1,15 @@
 import abc
+import contextlib
 import itertools
 import random
 from dataclasses import dataclass, field
-from typing import Dict, List, Any, Set, Optional
+from typing import Dict, List, Any, Optional
 
 
 @dataclass
 class Environment:
     """Naming environment for expression evaluation"""
+
     scopes: List[Dict[str, Any]] = field(default_factory=list)
 
     def __init__(self, initial_vals: Optional[Dict[str, Any]] = None):
@@ -46,6 +48,23 @@ class Environment:
                 return scope[name]
         raise ValueError(f"name {name} not bound")
 
+    @contextlib.contextmanager
+    def temp_scope(self):
+        try:
+            self.add_scope()
+            yield self
+        finally:
+            self.remove_scope()
+
+    @contextlib.contextmanager
+    def temp_binding(self, name: str, val):
+        try:
+            self.add_scope()
+            self.add_binding(name, val)
+            yield self
+        finally:
+            self.remove_scope()
+
 
 # --- Base AST Node Classes ---
 
@@ -57,9 +76,9 @@ class ASTNode(abc.ABC):
     Provides a common interface for AST elements.
     """
 
-    def possible_values(self, env: Environment) -> Set["PureNode"]:
-        """Determine possible values that this node could evaluate to"""
-        return set()
+    @abc.abstractmethod
+    def infer(self, env: Environment, val: "PureNode") -> float:
+        """Infer the probability of a value for this program"""
 
 
 # --- Pure (p) Classes ---
@@ -77,6 +96,9 @@ class PureNode(ASTNode):
 
     def __bool__(self) -> bool:
         raise ValueError(f"truthiness check on non-boolean value {self}")
+
+    def infer(self, env: Environment, val: "PureNode") -> float:
+        return float(self.eval(env) == val.eval(env))
 
 
 def var(name: str) -> "PureNode":
@@ -113,13 +135,6 @@ class VariableNode(PureNode):
     def eval(self, env: Environment) -> PureNode:
         return env.get_binding(self.name)
 
-    def possible_values(self, env: Environment) -> Set[PureNode]:
-        # Original code returns a single PureNode, but the signature expects a
-        # set. This will return a set containing the single possible value.
-        # env.get_binding(self.name) will return a Set[PureNode] when called in
-        # the context of possible_values.
-        return env.get_binding(self.name)
-
 
 @dataclass(frozen=True)
 class TrueNode(PureNode):
@@ -131,9 +146,6 @@ class TrueNode(PureNode):
     def __bool__(self) -> bool:
         return True
 
-    def possible_values(self, env: Environment) -> Set[PureNode]:
-        return {self}
-
 
 @dataclass(frozen=True)
 class FalseNode(PureNode):
@@ -144,9 +156,6 @@ class FalseNode(PureNode):
 
     def __bool__(self) -> bool:
         return False
-
-    def possible_values(self, env: Environment) -> Set[PureNode]:
-        return {self}
 
 
 @dataclass(frozen=True)
@@ -182,16 +191,6 @@ class IfElseNode(PureNode):
             return self.true_branch.eval(env)
         return self.false_branch.eval(env)
 
-    def possible_values(self, env: Environment) -> Set[PureNode]:
-        cond_vals = self.condition.possible_values(env)
-        vals = set()
-        for cond_val in cond_vals:
-            if bool(cond_val):
-                vals |= self.true_branch.possible_values(env)
-            else:
-                vals |= self.false_branch.possible_values(env)
-        return vals
-
 
 @dataclass(frozen=True)
 class ConsNode(PureNode):
@@ -220,14 +219,6 @@ class ConsNode(PureNode):
     def eval(self, env: Environment) -> PureNode:
         return ConsNode(self.head.eval(env), self.tail.eval(env))
 
-    def possible_values(self, env: Environment) -> Set[PureNode]:
-        return set(
-            ConsNode(phead, ptail)
-            for phead, ptail in itertools.product(
-                self.head.possible_values(env), self.tail.possible_values(env)
-            )
-        )
-
 
 @dataclass(frozen=True)
 class NilNode(PureNode):
@@ -235,9 +226,6 @@ class NilNode(PureNode):
     Represents a 'nil' value.
     Grammar: nil
     """
-
-    def possible_values(self, env: Environment) -> Set[PureNode]:
-        return {self}
 
 
 # --- Expression (e) Classes ---
@@ -252,6 +240,10 @@ class ExpressionNode(ASTNode):
     @abc.abstractmethod
     def sample(self, env: Environment) -> PureNode:
         """Sample a value from the program distribution"""
+
+    @abc.abstractmethod
+    def possible_vals(self, env: Environment) -> set[PureNode]:
+        """Get possible values for this expression in a given context"""
 
     def sample_toplevel(self, k: int = 1) -> List[PureNode]:
         """Sample at the top-level with an empty environment
@@ -284,11 +276,14 @@ class ReturnNode(ExpressionNode):
         if not isinstance(self.value, PureNode):
             raise TypeError("Return value must be an instance of PureNode.")
 
+    def possible_vals(self, env: Environment) -> set[PureNode]:
+        return {self.value.eval(env)}
+
     def sample(self, env: Environment) -> PureNode:
         return self.value.eval(env)
 
-    def possible_values(self, env: Environment) -> Set[PureNode]:
-        return self.value.possible_values(env)
+    def infer(self, env: Environment, val: PureNode) -> float:
+        return self.value.infer(env, val)
 
 
 @dataclass(frozen=True)
@@ -315,8 +310,15 @@ class FlipNode(ExpressionNode):
     def sample(self, env: Environment) -> PureNode:
         return boolean(random.random() < self.theta)
 
-    def possible_values(self, env: Environment) -> Set[PureNode]:
+    def possible_vals(self, env: Environment) -> set[PureNode]:
         return {TrueNode(), FalseNode()}
+
+    def infer(self, env: Environment, val: PureNode) -> float:
+        if isinstance(val, TrueNode):
+            return self.theta
+        if isinstance(val, FalseNode):
+            return 1 - self.theta
+        return 0.0
 
 
 @dataclass(frozen=True)
@@ -353,7 +355,17 @@ class SequenceNode(ExpressionNode):
         env.add_binding(self.variable_name, bind_val)
         return self.next_expr.sample(env)
 
-    def possible_values(self, env: Environment) -> Set[PureNode]:
-        assgn_vals = self.assignment_expr.possible_values(env)
-        env.add_binding(self.variable_name, assgn_vals)
-        return self.next_expr.possible_values(env)
+    def possible_vals(self, env: Environment) -> set[PureNode]:
+        poss = set()
+        for val in self.assignment_expr.possible_vals(env):
+            with env.temp_binding(self.variable_name, val):
+                poss |= self.next_expr.possible_vals(env)
+        return poss
+
+    def infer(self, env: Environment, val: PureNode) -> float:
+        prob = 0.0
+        for poss_val in self.assignment_expr.possible_vals(env):
+            with env.temp_binding(self.variable_name, poss_val):
+                bound_val_prob = self.assignment_expr.infer(env, poss_val)
+                prob += bound_val_prob * self.next_expr.infer(env, val)
+        return prob
