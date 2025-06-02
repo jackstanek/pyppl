@@ -1,16 +1,18 @@
 import abc
 import contextlib
-from functools import cached_property
 import random
 from dataclasses import dataclass, field
-from typing import Dict, List, Any, Optional
+from functools import cached_property
+from typing import Any, Dict, List, Optional
+
+from pyppl.params import ParamVector
 
 
 @dataclass
 class Environment:
     """Naming environment for expression evaluation"""
 
-    params: Dict[str, float]
+    params: ParamVector
     scopes: List[Dict[str, Any]] = field(default_factory=list)
 
     def __init__(
@@ -20,7 +22,7 @@ class Environment:
     ):
         """Initializes an environment"""
         if params is not None:
-            self.params = params
+            self.params = ParamVector(params)
         if initial_vals is None:
             initial_vals = {}
         self.scopes = [initial_vals]
