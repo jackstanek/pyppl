@@ -221,3 +221,19 @@ def test_itruediv_by_zero():
     v1 = ParamVector({"a": 1.0})
     with pytest.raises(ZeroDivisionError):
         v1 /= 0
+
+
+def test_paramvector_squared_l2_norm():
+    """
+    Tests the squared L2 norm of a parameter vector
+    """
+    v = ParamVector({"a": 3, "b": 4})
+    assert v.squared_l2_norm() == 25
+
+
+def test_paramvector_zeros_like():
+    """
+    Tests creating a zeroed vector
+    """
+    v = ParamVector({"a": 10, "b": 20})
+    assert ParamVector.zeros_like(v) == ParamVector({"a": 0, "b": 0})

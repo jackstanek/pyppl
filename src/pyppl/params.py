@@ -9,6 +9,14 @@ class ParamVector(dict):
         for k, v in self.items():
             super().__setitem__(k, float(v))
 
+    @classmethod
+    def zeros_like(cls, other: "ParamVector") -> "ParamVector":
+        return cls({k: 0 for k in other})
+
+    def squared_l2_norm(self) -> float:
+        """Get the squared L2 norm of this vector"""
+        return sum(self[k] * self[k] for k in self.keys())
+
     def _check_keys_match(self, other: "ParamVector") -> None:
         """Check that the keys match between this vector and the other vector
 
