@@ -285,10 +285,15 @@ def test_sum_empty_list_with_paramvector_start():
     assert isinstance(result, ParamVector)
     assert result == start_vec
 
+
 def test_sum_paramvector_quotients():
     """
     Tests that we can sum over quotients of ParamVectors
     """
+    v1 = ParamVector({"a": 2.0, "b": 4.0})
+    v2 = ParamVector({"a": 4.0, "b": 8.0})
+    assert sum(v / 2 for v in [v1, v2]) == {"a": 3.0, "b": 6.0}
+
 
 def test_sum_mismatched_keys_in_list():
     """
@@ -310,4 +315,3 @@ def test_sum_mismatched_keys_with_start():
     start_vec = ParamVector({"a": 0.0, "b": 0.0})
     with pytest.raises(ValueError, match="keys in vectors do not match"):
         _ = sum([v1, v2], start=start_vec)
-

@@ -1,5 +1,3 @@
-
-import pytest
 from typing import Any
 
 
@@ -19,7 +17,7 @@ class ParamVector(dict):
         for k, v in self.items():
             # Convert all initial values to float
             super().__setitem__(k, float(v))
-    
+
     def squared_l2_norm(self) -> float:
         """Get the squared L2 norm of this vector
 
