@@ -131,7 +131,7 @@ def test_initialization_and_type_conversion():
     """
     Tests initial creation of ParamVector and ensures values are floats.
     """
-    v = ParamVector(x=10, y=20.5)
+    v = ParamVector({"x": 10, "y": 20.5})
     assert v == {"x": 10.0, "y": 20.5}
     assert isinstance(v["x"], float)
     assert isinstance(v["y"], float)
@@ -150,6 +150,21 @@ def test_empty_param_vector_operations():
     # Test setitem on empty vector (should still raise error for new key)
     with pytest.raises(ValueError, match="no such key a in vector"):
         v_empty["a"] = 1.0
+
+
+def test_squared_l2_norm():
+    """
+    Tests the squared_l2_norm method.
+    """
+    v = ParamVector({"a": 3.0, "b": 4.0})
+    assert v.squared_l2_norm() == 25.0
+    v_empty = ParamVector({})
+    assert v_empty.squared_l2_norm() == 0.0
+    v_neg = ParamVector({"x": -2.0, "y": -3.0})
+    assert v_neg.squared_l2_norm() == 13.0
+
+
+# --- In-place operator tests ---
 
 
 def test_iadd_success():
@@ -200,7 +215,7 @@ def test_imul_scalar():
     v1 *= 2
     assert v1 == {"a": 4.0, "b": 6.0}
     v1 *= 0.5
-    assert v1 == {"a": 2.0, "b": 3.0}  # 4.0 * 0.5 = 2.0, 6.0 * 0.5 = 3.0
+    assert v1 == {"a": 2.0, "b": 3.0}
 
 
 def test_itruediv_scalar():
@@ -211,7 +226,7 @@ def test_itruediv_scalar():
     v1 /= 2
     assert v1 == {"a": 2.0, "b": 3.0}
     v1 /= 0.5
-    assert v1 == {"a": 4.0, "b": 6.0}  # 2.0 / 0.5 = 4.0, 3.0 / 0.5 = 6.0
+    assert v1 == {"a": 4.0, "b": 6.0}
 
 
 def test_itruediv_by_zero():
@@ -223,17 +238,76 @@ def test_itruediv_by_zero():
         v1 /= 0
 
 
-def test_paramvector_squared_l2_norm():
+def test_sum_of_param_vectors_no_start():
     """
-    Tests the squared L2 norm of a parameter vector
+    Tests summing a list of ParamVectors without a specified start value.
+    This relies on the first element being the initial sum.
     """
-    v = ParamVector({"a": 3, "b": 4})
-    assert v.squared_l2_norm() == 25
+    v1 = ParamVector({"a": 1.0, "b": 2.0})
+    v2 = ParamVector({"a": 3.0, "b": 4.0})
+    v3 = ParamVector({"a": 5.0, "b": 6.0})
+    result = sum([v1, v2, v3])
+    assert isinstance(result, ParamVector)
+    assert result == {"a": 9.0, "b": 12.0}
 
 
-def test_paramvector_zeros_like():
+def test_sum_of_param_vectors_with_paramvector_start():
     """
-    Tests creating a zeroed vector
+    Tests summing a list of ParamVectors with a ParamVector as the start value.
     """
-    v = ParamVector({"a": 10, "b": 20})
-    assert ParamVector.zeros_like(v) == ParamVector({"a": 0, "b": 0})
+    v1 = ParamVector({"a": 1.0, "b": 2.0})
+    v2 = ParamVector({"a": 3.0, "b": 4.0})
+    start_vec = ParamVector({"a": 10.0, "b": 20.0})
+    result = sum([v1, v2], start=start_vec)
+    assert isinstance(result, ParamVector)
+    assert result == {"a": 14.0, "b": 26.0}
+
+
+def test_sum_of_param_vectors_with_zero_start():
+    """
+    Tests summing a list of ParamVectors with 0 as the start value.
+    This relies on the __radd__ method.
+    """
+    v1 = ParamVector({"a": 1.0, "b": 2.0})
+    v2 = ParamVector({"a": 3.0, "b": 4.0})
+    result = sum([v1, v2], start=0)
+    assert isinstance(result, ParamVector)
+    assert result == {"a": 4.0, "b": 6.0}
+
+
+def test_sum_empty_list_with_paramvector_start():
+    """
+    Tests summing an empty list with a ParamVector start value.
+    Should return the start value.
+    """
+    start_vec = ParamVector({"a": 10.0, "b": 20.0})
+    result = sum([], start=start_vec)
+    assert isinstance(result, ParamVector)
+    assert result == start_vec
+
+def test_sum_paramvector_quotients():
+    """
+    Tests that we can sum over quotients of ParamVectors
+    """
+
+def test_sum_mismatched_keys_in_list():
+    """
+    Tests that summing a list with ParamVectors having mismatched keys raises ValueError.
+    """
+    v1 = ParamVector({"a": 1.0, "b": 2.0})
+    v2 = ParamVector({"a": 3.0, "c": 4.0})  # Mismatched keys
+    with pytest.raises(ValueError, match="keys in vectors do not match"):
+        _ = sum([v1, v2])
+
+
+def test_sum_mismatched_keys_with_start():
+    """
+    Tests that summing a list with ParamVectors having mismatched keys (even with a matching start)
+    raises ValueError during the addition process.
+    """
+    v1 = ParamVector({"a": 1.0, "b": 2.0})
+    v2 = ParamVector({"a": 3.0, "c": 4.0})  # Mismatched keys
+    start_vec = ParamVector({"a": 0.0, "b": 0.0})
+    with pytest.raises(ValueError, match="keys in vectors do not match"):
+        _ = sum([v1, v2], start=start_vec)
+

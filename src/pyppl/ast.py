@@ -270,9 +270,9 @@ class ExpressionNode(ASTNode):
         """Get symbolic parameters of this expression and its subexpressions"""
         return set()
 
-    def gradient(self, env: Environment, val: PureNode) -> dict[str, float]:
+    def gradient(self, env: Environment, val: PureNode) -> ParamVector:
         """Compute the gradient of the denotation for a particular value"""
-        return {p: self.deriv(env, p, val) for p in self.params}
+        return ParamVector({p: self.deriv(env, p, val) for p in self.params})
 
     def deriv(self, env: Environment, param: str, val: PureNode) -> float:
         """Compute the derivative of the denotation for some parameter
