@@ -6,6 +6,9 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = []
 
+[project.scripts]
+pyppl = "pyppl.__main__:main"
+
 [dependency-groups]
 dev = [
     "pytest>=8.3.5",

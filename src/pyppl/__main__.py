@@ -1,3 +1,4 @@
+import argparse
 import random
 
 from pyppl import ast
@@ -10,17 +11,14 @@ def init_params(expr: ast.ExpressionNode) -> ParamVector:
 
 
 def main():
-    prog = ast.SequenceNode(
-        "x",
-        ast.FlipNode(0.5),
-        ast.ReturnNode(
-            ast.IfElseNode(
-                ast.var("x"), ast.ConsNode(ast.var("x"), ast.NilNode()), ast.NilNode()
-            )
-        ),
-    )
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers(required=True, dest="command")
+    generate_parser = subparsers.add_parser("generate")
+    learn_parser = subparsers.add_parser("learn")
+    args = parser.parse_args()
 
-    print(prog.sample_toplevel(k=10))
+    print(args)
+
 
 
 if __name__ == "__main__":
