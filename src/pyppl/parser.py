@@ -1,3 +1,5 @@
+from typing import TextIO
+
 from lark import Lark, Transformer, v_args
 
 from pyppl import ast
@@ -254,3 +256,19 @@ class PypplTransformer(Transformer):
             The transformed child node.
         """
         return child
+
+
+def parse(input: str) -> ast.ExpressionNode:
+    """Parse a program into an abstract syntax tree.
+
+    Args:
+        input: string containing program text
+
+    Returns:
+        parsed syntax tree
+
+    Raises:
+        lark.UnexpectedInput: on syntax error
+    """
+    tree = pyppl_parser.parse(input)
+    return PypplTransformer().transform(tree)
