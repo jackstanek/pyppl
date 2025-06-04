@@ -6,6 +6,6 @@ Probabilistic programming language in Python.
 
 - [x] Sampling
 - [ ] (Bounded) recursion
-- [ ] Naive exact inference
-- [ ] Learning
+- [x] Naive exact inference
+- [x] Learning
 - [ ] Conditioning
