@@ -13,10 +13,10 @@ def init_params(expr: ast.ExpressionNode) -> ParamVector:
 
 def param_val(param: str) -> tuple[str, float]:
     """Convert a string in the format "p=v" to a tuple (p, v)
-    
+
     Args:
         param: the param=value string
-    
+
     Returns:
     """
     try:
@@ -41,6 +41,7 @@ def main():
         "--param",
         "-p",
         action="append",
+        dest="params",
         type=param_val,
         help="parameter value to use (format: <param>=<value>)",
     )
@@ -51,7 +52,11 @@ def main():
         # os.makedirs(args.output_dir, exist_ok=True)
         with args.program:
             prog_ast = parse(args.program.read())
-            for sample in prog_ast.sample_toplevel(args.n_samples):
+            if args.params:
+                env = ast.Environment(args.params)
+            else:
+                env = None
+            for sample in prog_ast.sample_toplevel(env=env, k=args.n_samples):
                 print(sample)
 
 

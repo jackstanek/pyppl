@@ -23,9 +23,20 @@ class Environment:
         """Initializes an environment"""
         if params is not None:
             self.params = ParamVector(params)
+        else:
+            self.params = ParamVector()
         if initial_vals is None:
             initial_vals = {}
         self.scopes = [initial_vals]
+
+    @cached_property
+    def param_names(self) -> set[str]:
+        """Names of defined parameters in the environment"""
+        return set(self.params.keys())
+
+    def clear_bindings(self) -> None:
+        """Clear all bindings in the environment"""
+        self.scopes = [{}]
 
     def add_scope(self):
         """Add a scope to the stack"""
@@ -251,6 +262,10 @@ class NilNode(PureNode):
 # --- Expression (e) Classes ---
 
 
+class UndefinedParamError(Exception):
+    """Thrown when a parameter is not defined in the execution environment."""
+
+
 @dataclass(frozen=True)
 class ExpressionNode(ASTNode):
     """
@@ -287,7 +302,9 @@ class ExpressionNode(ASTNode):
         """
         return 0.0
 
-    def sample_toplevel(self, k: int = 1) -> List[PureNode]:
+    def sample_toplevel(
+        self, env: Optional[Environment] = None, k: int = 1
+    ) -> List[PureNode]:
         """Sample at the top-level with an empty environment
 
         Args:
@@ -295,8 +312,20 @@ class ExpressionNode(ASTNode):
 
         Return:
             Resulting value from sampling
+
         """
-        return [self.sample(Environment()) for _ in range(k)]
+        if env is None:
+            env = Environment()
+        undefined_params = self.params - env.param_names
+        if undefined_params:
+            raise UndefinedParamError(
+                f"""undefined parameters: {",".join(undefined_params)}"""
+            )
+        samples = []
+        for _ in range(k):
+            samples.append(self.sample(env))
+            env.clear_bindings()
+        return samples
 
 
 @dataclass(frozen=True)
