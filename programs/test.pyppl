@@ -1,0 +1,3 @@
+x <- flip theta_1;
+y <- flip theta_2;
+return if x then cons y nil else nil

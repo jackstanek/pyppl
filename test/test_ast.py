@@ -1,4 +1,3 @@
-import itertools
 import pytest
 
 from pyppl.ast import (
@@ -402,3 +401,28 @@ def test_seq_flip_inference():
 
     assert expr.infer(env, TrueNode()) == 0.25
     assert expr.infer(env, FalseNode()) == 0.75
+
+
+def test_flip_gradient():
+    """Test calculating the gradient of a flip"""
+    env = Environment({"theta": 0.5})
+    expr = FlipNode("theta")
+    assert expr.gradient(env, TrueNode()) == {"theta": 1.0}
+    assert expr.gradient(env, FalseNode()) == {"theta": -1.0}
+    assert expr.gradient(env, NilNode()) == {"theta": 0.0}
+
+
+def test_seq_gradient():
+    """Test calculating the gradient of a sequence"""
+    env = Environment({"theta": 0.5})
+    if_val = NilNode()
+    else_val = ConsNode(TrueNode(), NilNode())
+    expr = SequenceNode(
+        "x",
+        FlipNode("theta"),
+        ReturnNode(IfElseNode(var("x"), if_val, else_val)),
+    )
+    assert expr.gradient(env, if_val) == {"theta": 1.0}
+    assert expr.gradient(env, else_val) == {"theta": -1.0}
+    assert expr.gradient(env, TrueNode()) == {"theta": 0.0}
+    assert expr.gradient(env, FalseNode()) == {"theta": 0.0}

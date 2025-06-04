@@ -1,22 +1,42 @@
 import abc
 import contextlib
-import itertools
 import random
 from dataclasses import dataclass, field
-from typing import Dict, List, Any, Optional
+from functools import cached_property
+from typing import Any, Dict, List, Optional
+
+from pyppl.params import ParamVector
 
 
 @dataclass
 class Environment:
     """Naming environment for expression evaluation"""
 
+    params: ParamVector
     scopes: List[Dict[str, Any]] = field(default_factory=list)
 
-    def __init__(self, initial_vals: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        params: Optional[Dict[str, float]] = None,
+        initial_vals: Optional[Dict[str, Any]] = None,
+    ):
         """Initializes an environment"""
+        if params is not None:
+            self.params = ParamVector(params)
+        else:
+            self.params = ParamVector()
         if initial_vals is None:
             initial_vals = {}
         self.scopes = [initial_vals]
+
+    @cached_property
+    def param_names(self) -> set[str]:
+        """Names of defined parameters in the environment"""
+        return set(self.params.keys())
+
+    def clear_bindings(self) -> None:
+        """Clear all bindings in the environment"""
+        self.scopes = [{}]
 
     def add_scope(self):
         """Add a scope to the stack"""
@@ -47,6 +67,17 @@ class Environment:
             if name in scope:
                 return scope[name]
         raise ValueError(f"name {name} not bound")
+
+    def get_param(self, name: str) -> float:
+        """Look up a parameter.
+
+        Args:
+            name: name of the parameter
+
+        Returns:
+            value of the parameter
+        """
+        return self.params[name]
 
     @contextlib.contextmanager
     def temp_scope(self):
@@ -231,6 +262,10 @@ class NilNode(PureNode):
 # --- Expression (e) Classes ---
 
 
+class UndefinedParamError(Exception):
+    """Thrown when a parameter is not defined in the execution environment."""
+
+
 @dataclass(frozen=True)
 class ExpressionNode(ASTNode):
     """
@@ -245,7 +280,31 @@ class ExpressionNode(ASTNode):
     def possible_vals(self, env: Environment) -> set[PureNode]:
         """Get possible values for this expression in a given context"""
 
-    def sample_toplevel(self, k: int = 1) -> List[PureNode]:
+    @cached_property
+    def params(self) -> set[str]:
+        """Get symbolic parameters of this expression and its subexpressions"""
+        return set()
+
+    def gradient(self, env: Environment, val: PureNode) -> ParamVector:
+        """Compute the gradient of the denotation for a particular value"""
+        return ParamVector({p: self.deriv(env, p, val) for p in self.params})
+
+    def deriv(self, env: Environment, param: str, val: PureNode) -> float:
+        """Compute the derivative of the denotation for some parameter
+
+        Args:
+            env: naming environment to use
+            param: name of the parameter to differentiate
+            val: value at which to take the derivative
+
+        Returns:
+            value of the derivative at that point
+        """
+        return 0.0
+
+    def sample_toplevel(
+        self, env: Optional[Environment] = None, k: int = 1
+    ) -> List[PureNode]:
         """Sample at the top-level with an empty environment
 
         Args:
@@ -253,8 +312,20 @@ class ExpressionNode(ASTNode):
 
         Return:
             Resulting value from sampling
+
         """
-        return [self.sample(Environment()) for _ in range(k)]
+        if env is None:
+            env = Environment()
+        undefined_params = self.params - env.param_names
+        if undefined_params:
+            raise UndefinedParamError(
+                f"""undefined parameters: {",".join(undefined_params)}"""
+            )
+        samples = []
+        for _ in range(k):
+            samples.append(self.sample(env))
+            env.clear_bindings()
+        return samples
 
 
 @dataclass(frozen=True)
@@ -293,7 +364,7 @@ class FlipNode(ExpressionNode):
     Grammar: flip theta
     """
 
-    theta: float
+    theta: float | str
 
     def __post_init__(self):
         """
@@ -302,23 +373,47 @@ class FlipNode(ExpressionNode):
         Args:
             theta: The probability value (a float between 0.0 and 1.0).
         """
-        if not isinstance(self.theta, (int, float)):
-            raise TypeError("Theta must be a number.")
-        if not (0.0 <= self.theta <= 1.0):
+        if isinstance(self.theta, float) and not (0.0 <= self.theta <= 1.0):
             raise ValueError("Theta must be between 0.0 and 1.0 (inclusive).")
 
+    def get_theta(self, env: Environment) -> float:
+        """Get the value of the parameter."""
+        if isinstance(self.theta, str):
+            return env.get_param(self.theta)
+        return self.theta
+
     def sample(self, env: Environment) -> PureNode:
-        return boolean(random.random() < self.theta)
+        return boolean(random.random() < self.get_theta(env))
 
     def possible_vals(self, env: Environment) -> set[PureNode]:
         return {TrueNode(), FalseNode()}
 
     def infer(self, env: Environment, val: PureNode) -> float:
+        val = val.eval(env)
         if isinstance(val, TrueNode):
-            return self.theta
+            return self.get_theta(env)
         if isinstance(val, FalseNode):
-            return 1 - self.theta
+            return 1 - self.get_theta(env)
         return 0.0
+
+    def deriv(self, env: Environment, param: str, val: PureNode) -> float:
+        if isinstance(self.theta, float) or self.theta != param:
+            return 0.0
+
+        val = val.eval(env)
+        if isinstance(val, TrueNode):
+            grad = 1.0
+        elif isinstance(val, FalseNode):
+            grad = -1.0
+        else:
+            grad = 0.0
+        return grad
+
+    @cached_property
+    def params(self) -> set[str]:
+        if isinstance(self.theta, str):
+            return {self.theta}
+        return set()
 
 
 @dataclass(frozen=True)
@@ -363,9 +458,32 @@ class SequenceNode(ExpressionNode):
         return poss
 
     def infer(self, env: Environment, val: PureNode) -> float:
+        # The denotation of a sequence is the sum of the products of the
+        # probabilities of each possible intermediate value resulting in the
+        # given value being produced:
+        # sum_{v in val} [[assign]](env, v) * [[next]](env[x |-> v], val)
         prob = 0.0
         for poss_val in self.assignment_expr.possible_vals(env):
             with env.temp_binding(self.variable_name, poss_val):
                 bound_val_prob = self.assignment_expr.infer(env, poss_val)
                 prob += bound_val_prob * self.next_expr.infer(env, val)
         return prob
+
+    def deriv(self, env: Environment, param: str, val: PureNode) -> float:
+        # The derivative of a sequence is computed with the product rule using
+        # the formula given in infer().
+
+        # Sum derivatives of each possible value
+        deriv = 0.0
+        for poss_val in self.assignment_expr.possible_vals(env):
+            with env.temp_binding(self.variable_name, poss_val):
+                del_e2 = self.next_expr.deriv(env, param, val)
+                e2 = self.next_expr.infer(env, val)
+            del_e1 = self.assignment_expr.deriv(env, param, poss_val)
+            e1 = self.assignment_expr.infer(env, poss_val)
+            deriv += del_e1 * e2 + e1 * del_e2  # Product rule
+        return deriv
+
+    @cached_property
+    def params(self) -> set[str]:
+        return self.assignment_expr.params | self.next_expr.params
