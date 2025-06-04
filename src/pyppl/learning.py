@@ -31,3 +31,20 @@ def negative_log_likelihood_gradient(
     if grad == 0:
         raise ValueError("empty training set")
     return grad
+
+
+def optimize(
+    prog: ast.ExpressionNode,
+    data: list[ast.PureNode],
+    epochs: int = 100,
+    learning_rate: float = 0.01,
+) -> ParamVector:
+    """Optimize parameters to maximize the likelihood of the training set"""
+    params = ParamVector.random(prog.params)
+    for epoch in range(epochs):
+        nll = negative_log_likelihood(prog, params, data)
+        print(f"epoch: {epoch}; nll: {nll}")
+        grad = negative_log_likelihood_gradient(prog, params, data)
+        params += learning_rate * grad
+
+    return params

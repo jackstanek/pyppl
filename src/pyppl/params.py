@@ -1,4 +1,5 @@
-from typing import Any
+import random
+from typing import Any, Collection
 
 
 class ParamVector(dict):
@@ -17,6 +18,31 @@ class ParamVector(dict):
         for k, v in self.items():
             # Convert all initial values to float
             super().__setitem__(k, float(v))
+
+    @classmethod
+    def zero(cls, params: Collection[str]) -> "ParamVector":
+        """Initialize a zero vector with the given parameter names.
+
+        Args:
+            params: collection of names of variables
+
+        Returns:
+            parameter vector with the given names, with all values set to zero
+        """
+        return cls((k, 0) for k in params)
+
+    @classmethod
+    def random(cls, params: Collection[str]) -> "ParamVector":
+        """Initialize a random vector with the given parameter names.
+
+        Args:
+            params: collection of names of variables
+
+        Returns:
+            parameter vector with the given names, with all values set random
+            values in [0, 1]
+        """
+        return cls((k, random.random()) for k in params)
 
     def squared_l2_norm(self) -> float:
         """Get the squared L2 norm of this vector
@@ -140,6 +166,17 @@ class ParamVector(dict):
             ParamVector: A new ParamVector instance with scaled values.
         """
         return ParamVector((k, self[k] * x) for k in self.keys())
+
+    def __rmul__(self, x: int | float) -> "ParamVector":
+        """Handles reverse multiplication (e.g., scalar * ParamVector).
+
+        Args:
+            x (int | float): The scalar value to multiply by.
+
+        Returns:
+            ParamVector: A new ParamVector instance with scaled values.
+        """
+        return self.__mul__(x)
 
     def __imul__(self, x: int | float) -> "ParamVector":
         """Performs in-place multiplication (*=) by a scalar x.
