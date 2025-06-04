@@ -29,14 +29,13 @@ def param_val(param: str) -> tuple[str, float]:
         raise ValueError("improper parameter string format") from err
 
 
-
 # Define the updated classes provided by the user
 class PickleLoader:
     """Wrapper for loading pickle files"""
 
     def __init__(self, path: str):
         self.path = path
-        self.pickle_file = None # Initialize to None
+        self.pickle_file = None  # Initialize to None
 
     def load(self) -> Any:
         """Loads an object from the pickle file.
@@ -60,7 +59,7 @@ class PickleLoader:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.pickle_file: # Ensure file was opened before attempting to close
+        if self.pickle_file:  # Ensure file was opened before attempting to close
             self.pickle_file.close()
         return exc_type is None
 
@@ -70,8 +69,8 @@ class PickleDumper:
 
     def __init__(self, path: str):
         self.path = path
-        self.pickle_file = None # Initialize to None
-        self.pickler = None # Initialize to None
+        self.pickle_file = None  # Initialize to None
+        self.pickler = None  # Initialize to None
 
     def dump(self, obj: Any):
         """Dumps an object to the pickle file.
@@ -96,7 +95,7 @@ class PickleDumper:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.pickle_file: # Ensure file was opened before attempting to close
+        if self.pickle_file:  # Ensure file was opened before attempting to close
             self.pickle_file.close()
         return exc_type is None
 

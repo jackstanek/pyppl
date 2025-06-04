@@ -27,7 +27,9 @@ def avg_negative_log_likelihood_gradient(
         and the parameters
     """
     env = ast.Environment(params)
-    grad = sum(prog.gradient(env, val) / prog.infer(env, val) for val in data) / len(data)
+    grad = sum(prog.gradient(env, val) / prog.infer(env, val) for val in data) / len(
+        data
+    )
     if isinstance(grad, (float, int)):
         raise ValueError("empty training set or type error")
     return grad

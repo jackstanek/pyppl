@@ -1,4 +1,3 @@
-from typing import TextIO
 
 from lark import Lark, Transformer, v_args
 
