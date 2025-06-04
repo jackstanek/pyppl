@@ -4,8 +4,9 @@ import random
 from typing import Any
 
 from pyppl import ast
-from pyppl.parser import parse
+from pyppl.learning import optimize
 from pyppl.params import ParamVector
+from pyppl.parser import parse
 
 
 def init_params(expr: ast.ExpressionNode) -> ParamVector:
@@ -127,15 +128,22 @@ def main():
     args = parser.parse_args()
 
     if args.command == "generate":
-        # os.makedirs(args.output_dir, exist_ok=True)
         with args.program:
             prog_ast = parse(args.program.read())
             if args.params:
                 env = ast.Environment(args.params)
             else:
                 env = None
-            for sample in prog_ast.sample_toplevel(env=env, k=args.n_samples):
-                print(sample)
+            samples = prog_ast.sample_toplevel(env=env, k=args.n_samples)
+        with PickleDumper(args.data) as dumper:
+            dumper.dump(samples)
+
+    elif args.command == "learn":
+        with args.program, PickleLoader(args.data) as loader:
+            prog_ast = parse(args.program.read())
+            samples = loader.load()
+            params = optimize(prog_ast, samples)
+            print(f"learned parameters: {params}")
 
 
 if __name__ == "__main__":

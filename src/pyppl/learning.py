@@ -37,7 +37,7 @@ def optimize(
     prog: ast.ExpressionNode,
     data: list[ast.PureNode],
     epochs: int = 100,
-    learning_rate: float = 0.01,
+    learning_rate: float = 0.001,
 ) -> ParamVector:
     """Optimize parameters to maximize the likelihood of the training set"""
     params = ParamVector.random(prog.params)
