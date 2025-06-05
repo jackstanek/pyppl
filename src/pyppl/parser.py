@@ -5,7 +5,10 @@ from pyppl import ast
 
 pyppl_parser = Lark(
     r"""
-    value             : eff_expr
+    prog              : defn* eff_expr
+    defn              : "let" "rec" VAR_OR_PARAM_NAME "=" eff_expr ";"
+    expr              : eff_expr
+                      | pure_expr
     eff_expr          : VAR_OR_PARAM_NAME "<-" non_bind_eff_expr ";" eff_expr -> bind_expr
                       | non_bind_eff_expr
     non_bind_eff_expr : "flip" param -> flip_expr
@@ -30,7 +33,7 @@ pyppl_parser = Lark(
     %ignore WS
 
     """,
-    start="value",
+    start="prog",
     parser="lalr",
 )
 
@@ -43,8 +46,9 @@ class PypplTransformer(Transformer):
     """
 
     # Top-level rule
-    def value(self, eff_expr):
-        """Handles the 'value' rule, the starting point of the grammar.
+    @v_args(inline=False)
+    def prog(self, prog):
+        """Handles the 'prog' rule, the starting point of the grammar.
 
         Args:
             eff_expr: The transformed effectful expression.
@@ -52,7 +56,7 @@ class PypplTransformer(Transformer):
         Returns:
             The transformed effectful expression.
         """
-        return eff_expr
+        return prog
 
     # Effectful Expressions (e)
     def bind_expr(self, var_name, assignment_expr, next_expr):
