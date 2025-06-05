@@ -25,8 +25,12 @@ class Environment:
             self.params = ParamVector(params)
         else:
             self.params = ParamVector()
+
         if initial_vals is None:
             initial_vals = {}
+        else:
+            initial_vals = dict(initial_vals)
+
         self.scopes = [initial_vals]
 
     @cached_property
@@ -107,16 +111,93 @@ class ASTNode(abc.ABC):
     Provides a common interface for AST elements.
     """
 
+
+@dataclass(frozen=True)
+class Program(ASTNode):
+    """
+    Base class for programs (definitions followed by an effectful expression)
+    """
+
+    defs: dict[str, "ExpressionNode"]
+    expr: "EffectfulNode"
+
+    def env(self, params: ParamVector) -> Environment:
+        """Create a fresh environment with the given parameters.
+
+        Args:
+            params: vector containing the parameters
+
+        Returns:
+            new environment with the global bindings and given parameters
+        """
+        return Environment(params=params, initial_vals=self.defs)
+
+    def infer(self, params: ParamVector, val: "PureNode") -> float:
+        """Perform inference over the whole program.
+
+        Args:
+            params: fixed parameter values
+            val: value to infer
+
+        Return:
+            probability assigned to the value by the program
+        """
+        env = Environment(params=params, initial_vals=self.defs)
+        return self.expr.infer(env, val)
+
+    @cached_property
+    def params(self) -> set[str]:
+        return self.expr.params.union(*(b.params for b in self.defs.values()))
+
+    def sample(self, params: ParamVector, k: int = 1) -> List["PureNode"]:
+        """Sample at the top-level with an environment containing the global definitions
+
+        Args:
+            k: number of samples to evaluate
+
+        Return:
+            Resulting value from sampling
+
+        """
+        env = Environment(params=params, initial_vals=self.defs)
+        undefined_params = self.expr.params - env.param_names
+        if undefined_params:
+            raise UndefinedParamError(
+                f"""undefined parameters: {",".join(undefined_params)}"""
+            )
+        samples = []
+        for _ in range(k):
+            samples.append(self.expr.sample(env))
+            env.clear_bindings()
+        return samples
+
+    def gradient(self, params: ParamVector, val: "PureNode") -> ParamVector:
+        """Compute the gradient of the denotation for a particular value"""
+        env = self.env(params)
+        return ParamVector({p: self.expr.deriv(env, p, val) for p in self.params})
+
+
+@dataclass(frozen=True)
+class ExpressionNode(ASTNode):
+    """
+    Base class for expressions in the language
+    """
+
     @abc.abstractmethod
     def infer(self, env: Environment, val: "PureNode") -> float:
         """Infer the probability of a value for this program"""
+
+    @cached_property
+    @abc.abstractmethod
+    def params(self) -> set[str]:
+        """Set of parameter names in this sub-expression"""
 
 
 # --- Pure (p) Classes ---
 
 
 @dataclass(frozen=True)
-class PureNode(ASTNode):
+class PureNode(ExpressionNode):
     """
     Abstract base class for expression (p) nodes.
     """
@@ -130,6 +211,10 @@ class PureNode(ASTNode):
 
     def infer(self, env: Environment, val: "PureNode") -> float:
         return float(self.eval(env) == val.eval(env))
+
+    @cached_property
+    def params(self) -> set[str]:
+        return set()
 
 
 def var(name: str) -> "PureNode":
@@ -267,7 +352,7 @@ class UndefinedParamError(Exception):
 
 
 @dataclass(frozen=True)
-class ExpressionNode(ASTNode):
+class EffectfulNode(ExpressionNode):
     """
     Abstract base class for expression (e) nodes.
     """
@@ -302,34 +387,9 @@ class ExpressionNode(ASTNode):
         """
         return 0.0
 
-    def sample_toplevel(
-        self, env: Optional[Environment] = None, k: int = 1
-    ) -> List[PureNode]:
-        """Sample at the top-level with an empty environment
-
-        Args:
-            k: number of samples to evaluate
-
-        Return:
-            Resulting value from sampling
-
-        """
-        if env is None:
-            env = Environment()
-        undefined_params = self.params - env.param_names
-        if undefined_params:
-            raise UndefinedParamError(
-                f"""undefined parameters: {",".join(undefined_params)}"""
-            )
-        samples = []
-        for _ in range(k):
-            samples.append(self.sample(env))
-            env.clear_bindings()
-        return samples
-
 
 @dataclass(frozen=True)
-class ReturnNode(ExpressionNode):
+class ReturnNode(EffectfulNode):
     """
     Represents a 'return p' expression.
     Grammar: return p
@@ -358,7 +418,7 @@ class ReturnNode(ExpressionNode):
 
 
 @dataclass(frozen=True)
-class FlipNode(ExpressionNode):
+class FlipNode(EffectfulNode):
     """
     Represents a 'flip theta' expression.
     Grammar: flip theta
@@ -417,15 +477,15 @@ class FlipNode(ExpressionNode):
 
 
 @dataclass(frozen=True)
-class SequenceNode(ExpressionNode):
+class SequenceNode(EffectfulNode):
     """
     Represents a 'x <- e; e' sequential expression.
     Grammar: x <- e; e
     """
 
     variable_name: str
-    assignment_expr: ExpressionNode
-    next_expr: ExpressionNode
+    assignment_expr: EffectfulNode
+    next_expr: EffectfulNode
 
     def __post_init__(self):
         """
@@ -438,11 +498,11 @@ class SequenceNode(ExpressionNode):
         """
         if not isinstance(self.variable_name, str) or not self.variable_name:
             raise ValueError("Variable name must be a non-empty string.")
-        if not isinstance(self.assignment_expr, ExpressionNode):
+        if not isinstance(self.assignment_expr, EffectfulNode):
             raise TypeError(
                 "Assignment expression must be an instance of ExpressionNode."
             )
-        if not isinstance(self.next_expr, ExpressionNode):
+        if not isinstance(self.next_expr, EffectfulNode):
             raise TypeError("Next expression must be an instance of ExpressionNode.")
 
     def sample(self, env: Environment) -> PureNode:

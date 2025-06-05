@@ -1,4 +1,3 @@
-
 from lark import Lark, Transformer, v_args
 
 from pyppl import ast
@@ -6,7 +5,9 @@ from pyppl import ast
 pyppl_parser = Lark(
     r"""
     prog              : defn* eff_expr
-    defn              : "let" "rec" VAR_OR_PARAM_NAME "=" eff_expr ";"
+    defn              : var_defn | fun_defn
+    var_defn          : "define" VAR_OR_PARAM_NAME "=" expr
+    fun_defn          : "define" VAR_OR_PARAM_NAME VAR_OR_PARAM_NAME+ "=" expr
     expr              : eff_expr
                       | pure_expr
     eff_expr          : VAR_OR_PARAM_NAME "<-" non_bind_eff_expr ";" eff_expr -> bind_expr
@@ -26,7 +27,7 @@ pyppl_parser = Lark(
                       | VAR_OR_PARAM_NAME -> var
     # The negative lookahead `(?!...)` ensures that the regex will not match
     # if the current position is at the start of any of the listed keywords.
-    VAR_OR_PARAM_NAME : /(?!if\b|then\b|else\b|true\b|false\b|cons\b|nil\b|flip\b|return\b)[a-zA-Z_][a-zA-Z0-9_]*/
+    VAR_OR_PARAM_NAME : /(?!if\b|then\b|else\b|true\b|false\b|cons\b|nil\b|flip\b|return\b|define\b)[a-zA-Z_][a-zA-Z0-9_]*/
 
     %import common.WS
     %import common.FLOAT
@@ -51,12 +52,28 @@ class PypplTransformer(Transformer):
         """Handles the 'prog' rule, the starting point of the grammar.
 
         Args:
-            eff_expr: The transformed effectful expression.
+            prog: the transformed program
 
         Returns:
             The transformed effectful expression.
         """
-        return prog
+        # First elements of the list will be the bindings; the last element will
+        # be the program expression
+        return ast.Program(dict(prog[:-1]), prog[-1])
+
+    def var_defn(self, var_name, val):
+        """Handles the 'var_defn' rule to create a variable definition.
+
+        This rule corresponds to the syntax "let x = e".
+
+        Args:
+            var_name: name of the variable
+            val: the value to bind to the variable
+
+        Returns:
+            tuple representing the binding
+        """
+        return (var_name, val)
 
     # Effectful Expressions (e)
     def bind_expr(self, var_name, assignment_expr, next_expr):
@@ -261,7 +278,7 @@ class PypplTransformer(Transformer):
         return child
 
 
-def parse(input: str) -> ast.ExpressionNode:
+def parse(input: str) -> ast.Program:
     """Parse a program into an abstract syntax tree.
 
     Args:

@@ -5,15 +5,14 @@ from pyppl.params import ParamVector
 
 
 def avg_negative_log_likelihood(
-    prog: ast.ExpressionNode, params: ParamVector, data: list[ast.PureNode]
+    prog: ast.Program, params: ParamVector, data: list[ast.PureNode]
 ) -> float:
     """Compute the negative log-likelihood of a collection of data."""
-    env = ast.Environment(params)
-    return -sum(math.log(prog.infer(env, d)) for d in data) / len(data)
+    return -sum(math.log(prog.infer(params, d)) for d in data) / len(data)
 
 
 def avg_negative_log_likelihood_gradient(
-    prog: ast.ExpressionNode, params: ParamVector, data: list[ast.PureNode]
+    prog: ast.Program, params: ParamVector, data: list[ast.PureNode]
 ) -> ParamVector:
     """Compute the gradient of the negative log-likelhood function.
 
@@ -26,17 +25,16 @@ def avg_negative_log_likelihood_gradient(
         negative log-likelihood of observing the training set given the program
         and the parameters
     """
-    env = ast.Environment(params)
-    grad = sum(prog.gradient(env, val) / prog.infer(env, val) for val in data) / len(
-        data
-    )
+    grad = sum(
+        prog.gradient(params, val) / prog.infer(params, val) for val in data
+    ) / len(data)
     if isinstance(grad, (float, int)):
         raise ValueError("empty training set or type error")
     return grad
 
 
 def optimize(
-    prog: ast.ExpressionNode,
+    prog: ast.Program,
     data: list[ast.PureNode],
     epochs: int = 100,
     learning_rate: float = 0.01,

@@ -1,63 +1,50 @@
 import pytest
 
 from pyppl import ast as _ast
-from pyppl.parser import PypplTransformer, pyppl_parser
+from pyppl.parser import parse
 
 
-@pytest.fixture
-def transformer():
-    """Provides a PypplTransformer instance for tests."""
-    return PypplTransformer()
+def parse_expr(src: str) -> _ast.EffectfulNode:
+    """Parse a program and return its main expression"""
+    prog = parse(src)
+    return prog.expr
 
 
-@pytest.fixture
-def parser():
-    """Provides the Pyppl parser instance."""
-    return pyppl_parser
-
-
-def test_true_literal(parser, transformer):
+def test_true_literal():
     """Tests the transformation of a 'true' literal."""
-    tree = parser.parse("return true")
-    ast = transformer.transform(tree)
-    assert isinstance(
-        ast, _ast.ReturnNode
-    )  # 'true' is a pure_expr, wrapped by return_expr by default start rule
-    assert isinstance(ast.value, _ast.TrueNode)
+    expr = parse_expr("return true")
+    assert isinstance(expr, _ast.ReturnNode)
+    assert isinstance(expr.value, _ast.TrueNode)
 
 
-def test_false_literal(parser, transformer):
+def test_false_literal():
     """Tests the transformation of a 'false' literal."""
-    tree = parser.parse("return false")
-    ast = transformer.transform(tree)
-    assert isinstance(ast, _ast.ReturnNode)
-    assert isinstance(ast.value, _ast.FalseNode)
+    expr = parse_expr("return false")
+    assert isinstance(expr, _ast.ReturnNode)
+    assert isinstance(expr.value, _ast.FalseNode)
 
 
-def test_nil_literal(parser, transformer):
+def test_nil_literal():
     """Tests the transformation of a 'nil' literal."""
-    tree = parser.parse("return nil")
-    ast = transformer.transform(tree)
-    assert isinstance(ast, _ast.ReturnNode)
-    assert isinstance(ast.value, _ast.NilNode)
+    expr = parse_expr("return nil")
+    assert isinstance(expr, _ast.ReturnNode)
+    assert isinstance(expr.value, _ast.NilNode)
 
 
-def test_variable_node(parser, transformer):
+def test_variable_node():
     """Tests the transformation of a variable."""
-    tree = parser.parse("return x")
-    ast = transformer.transform(tree)
-    assert isinstance(ast, _ast.ReturnNode)
-    assert isinstance(ast.value, _ast.VariableNode)
-    assert ast.value.name == "x"
+    expr = parse_expr("return x")
+    assert isinstance(expr, _ast.ReturnNode)
+    assert isinstance(expr.value, _ast.VariableNode)
+    assert expr.value.name == "x"
 
 
-def test_if_then_else(parser, transformer):
+def test_if_then_else():
     """Tests the transformation of an 'if then else' expression."""
     code = "return if true then x else nil"
-    tree = parser.parse(code)
-    ast = transformer.transform(tree)
-    assert isinstance(ast, _ast.ReturnNode)
-    if_node = ast.value
+    expr = parse_expr(code)
+    assert isinstance(expr, _ast.ReturnNode)
+    if_node = expr.value
     assert isinstance(if_node, _ast.IfElseNode)
     assert isinstance(if_node.condition, _ast.TrueNode)
     assert isinstance(if_node.true_branch, _ast.VariableNode)
@@ -65,74 +52,67 @@ def test_if_then_else(parser, transformer):
     assert isinstance(if_node.false_branch, _ast.NilNode)
 
 
-def test_cons_node(parser, transformer):
+def test_cons_node():
     """Tests the transformation of a 'cons' expression."""
     code = "return cons true false"
-    tree = parser.parse(code)
-    ast = transformer.transform(tree)
-    assert isinstance(ast, _ast.ReturnNode)
-    cons_node = ast.value
+    expr = parse_expr(code)
+    assert isinstance(expr, _ast.ReturnNode)
+    cons_node = expr.value
     assert isinstance(cons_node, _ast.ConsNode)
     assert isinstance(cons_node.head, _ast.TrueNode)
     assert isinstance(cons_node.tail, _ast.FalseNode)
 
 
-def test_flip_expr_float(parser, transformer):
+def test_flip_expr_float():
     """Tests the transformation of a 'flip' expression with a float parameter."""
-    code = "flip 0.5"
-    tree = parser.parse(code)
-    ast = transformer.transform(tree)
-    assert isinstance(ast, _ast.FlipNode)
-    assert ast.theta == 0.5
+    expr = parse_expr("flip 0.5")
+    assert isinstance(expr, _ast.FlipNode)
+    assert expr.theta == 0.5
 
 
-def test_flip_expr_sym(parser, transformer):
+def test_flip_expr_sym():
     """Tests the transformation of a 'flip' expression with a symbolic parameter."""
     code = "flip p_val"
-    tree = parser.parse(code)
-    ast = transformer.transform(tree)
-    assert isinstance(ast, _ast.FlipNode)
-    assert ast.theta == "p_val"  # sym_param returns string, not float
+    expr = parse_expr(code)
+    assert isinstance(expr, _ast.FlipNode)
+    assert expr.theta == "p_val"  # sym_param returns string, not float
 
 
-def test_return_expr(parser, transformer):
+def test_return_expr():
     """Tests the transformation of a 'return' expression."""
     code = "return cons true nil"
-    tree = parser.parse(code)
-    ast = transformer.transform(tree)
-    assert isinstance(ast, _ast.ReturnNode)
-    assert isinstance(ast.value, _ast.ConsNode)
-    assert isinstance(ast.value.head, _ast.TrueNode)
-    assert isinstance(ast.value.tail, _ast.NilNode)
+    expr = parse_expr(code)
+    assert isinstance(expr, _ast.ReturnNode)
+    assert isinstance(expr.value, _ast.ConsNode)
+    assert isinstance(expr.value.head, _ast.TrueNode)
+    assert isinstance(expr.value.tail, _ast.NilNode)
 
 
-def test_bind_expr_simple(parser, transformer):
+def test_bind_expr_simple():
     """Tests the transformation of a simple bind expression."""
     code = "x <- flip 0.8; return x"
-    tree = parser.parse(code)
-    ast = transformer.transform(tree)
-    assert isinstance(ast, _ast.SequenceNode)
-    assert ast.variable_name == "x"
-    assert isinstance(ast.assignment_expr, _ast.FlipNode)
-    assert ast.assignment_expr.theta == 0.8
-    assert isinstance(ast.next_expr, _ast.ReturnNode)
-    assert isinstance(ast.next_expr.value, _ast.VariableNode)
-    assert ast.next_expr.value.name == "x"
+    expr = parse_expr(code)
+    assert isinstance(expr, _ast.SequenceNode)
+    assert expr.variable_name == "x"
+    assert isinstance(expr.assignment_expr, _ast.FlipNode)
+    assert expr.assignment_expr.theta == 0.8
+    assert isinstance(expr.next_expr, _ast.ReturnNode)
+    assert isinstance(expr.next_expr.value, _ast.VariableNode)
+    assert expr.next_expr.value.name == "x"
 
 
-def test_nested_expressions(parser, transformer):
+def test_nested_expressions():
     """Tests the transformation of complex nested expressions."""
     code = "a <- flip 0.1; b <- flip 0.9; c <- flip 0.2; return cons (if a then b else c) nil"
-    tree = parser.parse(code)
-    ast = transformer.transform(tree)
+    expr = parse_expr(code)
 
-    assert isinstance(ast, _ast.SequenceNode)
-    assert ast.variable_name == "a"
-    assert isinstance(ast.assignment_expr, _ast.FlipNode)
-    assert ast.assignment_expr.theta == 0.1
+    assert isinstance(expr, _ast.SequenceNode)
+    assert expr.variable_name == "a"
+    assert isinstance(expr.assignment_expr, _ast.FlipNode)
+    assert expr.assignment_expr.theta == 0.1
 
     # Check the first nested sequence
-    nested_seq = ast.next_expr
+    nested_seq = expr.next_expr
     assert isinstance(nested_seq, _ast.SequenceNode)
     assert nested_seq.variable_name == "b"
 
@@ -157,33 +137,31 @@ def test_nested_expressions(parser, transformer):
     assert isinstance(cons_node.tail, _ast.NilNode)
 
 
-def test_parenthesized_pure_expr(parser, transformer):
+def test_parenthesized_pure_expr():
     """Tests transformation with parentheses around a pure expression."""
     code = "return (true)"
-    tree = parser.parse(code)
-    ast = transformer.transform(tree)
-    assert isinstance(ast, _ast.ReturnNode)
-    assert isinstance(ast.value, _ast.TrueNode)
+    expr = parse_expr(code)
+    assert isinstance(expr, _ast.ReturnNode)
+    assert isinstance(expr.value, _ast.TrueNode)
 
 
-def test_parenthesized_eff_expr(parser, transformer):
+def test_parenthesized_eff_expr():
     """Tests transformation with parentheses around an effectful expression."""
     code = "(return true)"
-    tree = parser.parse(code)
-    ast = transformer.transform(tree)
-    assert isinstance(ast, _ast.ReturnNode)
-    assert isinstance(ast.value, _ast.TrueNode)
+    expr = parse_expr(code)
+    assert isinstance(expr, _ast.ReturnNode)
+    assert isinstance(expr.value, _ast.TrueNode)
 
 
-def test_variable_name_keywords(parser, transformer):
+def test_variable_name_keywords():
     """
     Tests that keywords are NOT parsed as VAR_OR_PARAM_NAME in pure expressions.
     This relies on the Lark grammar correctly preventing this.
     """
     # These should fail to parse if the grammar is correct
     with pytest.raises(Exception):  # Expecting a parse error
-        parser.parse("if <- flip 0.5; return if")
+        parse("if <- flip 0.5; return if")
     with pytest.raises(Exception):
-        parser.parse("return then")
+        parse("return then")
     with pytest.raises(Exception):
-        parser.parse("return else")
+        parse("return else")

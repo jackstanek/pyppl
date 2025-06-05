@@ -3,7 +3,7 @@ import pytest
 from pyppl.ast import (
     ConsNode,
     Environment,
-    ExpressionNode,
+    EffectfulNode,
     FalseNode,
     FlipNode,
     IfElseNode,
@@ -350,11 +350,11 @@ def test_sequencenode_sample(mocker):
     next_expr_result = TrueNode()
 
     # Mock assignment_expr.sample to return a specific value
-    mock_assignment_expr = mocker.Mock(spec=ExpressionNode)
+    mock_assignment_expr = mocker.Mock(spec=EffectfulNode)
     mock_assignment_expr.sample.return_value = assigned_value
 
     # Mock next_expr.sample to return a specific value
-    mock_next_expr = mocker.Mock(spec=ExpressionNode)
+    mock_next_expr = mocker.Mock(spec=EffectfulNode)
     mock_next_expr.sample.return_value = next_expr_result
 
     # Spy on env.add_binding to check if it's called correctly

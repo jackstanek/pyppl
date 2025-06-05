@@ -9,7 +9,7 @@ from pyppl.params import ParamVector
 from pyppl.parser import parse
 
 
-def init_params(expr: ast.ExpressionNode) -> ParamVector:
+def init_params(expr: ast.EffectfulNode) -> ParamVector:
     """Initialize parameters to random values."""
     return ParamVector({k: random.random()} for k in expr.params)
 
@@ -129,11 +129,11 @@ def main():
     if args.command == "generate":
         with args.program:
             prog_ast = parse(args.program.read())
-            if args.params:
-                env = ast.Environment(args.params)
+            if args.params is None:
+                params = []
             else:
-                env = None
-            samples = prog_ast.sample_toplevel(env=env, k=args.n_samples)
+                params = args.params
+            samples = prog_ast.sample(ParamVector(params), k=args.n_samples)
         with PickleDumper(args.data) as dumper:
             dumper.dump(samples)
 
