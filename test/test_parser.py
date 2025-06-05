@@ -165,3 +165,15 @@ def test_variable_name_keywords():
         parse("return then")
     with pytest.raises(Exception):
         parse("return else")
+
+
+def test_parsing_program_with_def():
+    """
+    Test that a program is parsed along with its definitions.
+    """
+    code = """
+        define foo = true
+        return foo
+    """
+    prog = parse(code)
+    assert "foo" in prog.defs

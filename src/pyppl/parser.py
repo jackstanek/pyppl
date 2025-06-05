@@ -61,10 +61,13 @@ class PypplTransformer(Transformer):
         # be the program expression
         return ast.Program(dict(prog[:-1]), prog[-1])
 
+    def defn(self, binding):
+        return binding
+
     def var_defn(self, var_name, val):
         """Handles the 'var_defn' rule to create a variable definition.
 
-        This rule corresponds to the syntax "let x = e".
+        This rule corresponds to the syntax "define x = e".
 
         Args:
             var_name: name of the variable
@@ -233,6 +236,10 @@ class PypplTransformer(Transformer):
     # Default for rules that just pass through their child (e.g., non_bind_eff_expr, pure_expr)
     # Lark automatically handles these if no specific method is defined,
     # but defining them can make the transformer more explicit.
+    def expr(self, child):
+        """Passes through a transformed expr"""
+        return child
+
     def eff_expr(self, child):
         """Passes through the transformed child for rules that don't create new AST nodes.
 
