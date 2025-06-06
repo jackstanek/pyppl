@@ -9,7 +9,12 @@ def avg_negative_log_likelihood(
 ) -> float:
     """Compute the negative log-likelihood of a collection of data."""
     env = ast.Environment(params)
-    return -sum(math.log(prog.infer(env, d)) for d in data) / len(data)
+    acc = 0
+    for datum in data:
+        prob = prog.infer(env, datum)
+        if prob != 0:
+            acc += math.log(prob)
+    return acc / len(data)
 
 
 def avg_negative_log_likelihood_gradient(
@@ -27,12 +32,12 @@ def avg_negative_log_likelihood_gradient(
         and the parameters
     """
     env = ast.Environment(params)
-    grad = sum(prog.gradient(env, val) / prog.infer(env, val) for val in data) / len(
-        data
-    )
-    if isinstance(grad, (float, int)):
-        raise ValueError("empty training set or type error")
-    return grad
+    grad = ParamVector.zero(params)
+    for datum in data:
+        prob = prog.infer(env, datum)
+        if prob != 0:
+            grad += prog.gradient(env, datum) / prob
+    return grad / len(data)
 
 
 def optimize(
