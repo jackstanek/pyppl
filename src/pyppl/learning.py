@@ -8,7 +8,12 @@ def avg_negative_log_likelihood(
     prog: ast.Program, params: ParamVector, data: list[ast.PureNode]
 ) -> float:
     """Compute the negative log-likelihood of a collection of data."""
-    return -sum(math.log(prog.infer(params, d)) for d in data) / len(data)
+    acc = 0
+    for datum in data:
+        prob = prog.infer(params, datum)
+        if prob != 0:
+            acc += math.log(prob)
+    return acc / len(data)
 
 
 def avg_negative_log_likelihood_gradient(
@@ -25,12 +30,12 @@ def avg_negative_log_likelihood_gradient(
         negative log-likelihood of observing the training set given the program
         and the parameters
     """
-    grad = sum(
-        prog.gradient(params, val) / prog.infer(params, val) for val in data
-    ) / len(data)
-    if isinstance(grad, (float, int)):
-        raise ValueError("empty training set or type error")
-    return grad
+    grad = ParamVector.zero(params)
+    for datum in data:
+        prob = prog.infer(params, datum)
+        if prob != 0:
+            grad += prog.gradient(params, datum) / prob
+    return grad / len(data)
 
 
 def optimize(

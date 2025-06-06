@@ -1,0 +1,11 @@
+x <- flip theta_1;
+<<<<<<< HEAD:programs/test.pyppl
+y <- flip theta_2
+return if x then cons y nil else nil
+||||||| 911bf44:programs/test.pyppl
+y <- flip theta_2;
+return if x then cons y nil else nil
+=======
+y <- flip theta_2;
+return if x then cons x y else nil
+>>>>>>> main:programs/test1.pyppl
