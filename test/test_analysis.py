@@ -174,3 +174,14 @@ class TestNameAnalysisPytest:
             expr=ast.ReturnNode(ast.var("y")),
         )
         name_analysis(prog)
+
+    def test_dynamic_scoping_fails(self):
+        """Test that dynamic scoping is not accepted"""
+        prog = ast.Program(
+            defns={"x": ast.var("y")},
+            expr=ast.SequenceNode(
+                "y", ast.ReturnNode(ast.TrueNode()), ast.ReturnNode(ast.var("x"))
+            ),
+        )
+        with pytest.raises(UnboundNameError):
+            name_analysis(prog)
