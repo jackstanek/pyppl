@@ -1,57 +1,31 @@
 import abc
 import contextlib
 import random
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from functools import cached_property
-from typing import Any, Dict, List, Optional
+from typing import Any, List
 
+from pyppl.environment import BaseEnv
 from pyppl.params import ParamVector
 
 
-@dataclass
-class Environment:
+@dataclass(frozen=True)
+class ASTNode(abc.ABC):
+    """
+    Abstract base class for all Abstract Syntax Tree nodes.
+    Provides a common interface for AST elements.
+    """
+
+
+class EvalEnv(BaseEnv):
     """Naming environment for expression evaluation"""
 
-    params: ParamVector
-    scopes: List[Dict[str, Any]] = field(default_factory=list)
-
-    def __init__(
-        self,
-        params: Optional[Dict[str, float]] = None,
-        initial_vals: Optional[Dict[str, Any]] = None,
-    ):
-        """Initializes an environment"""
-        if params is not None:
-            self.params = ParamVector(params)
-        else:
-            self.params = ParamVector()
-
-        if initial_vals is None:
-            initial_vals = {}
-        else:
-            initial_vals = dict(initial_vals)
-
-        self.scopes = [initial_vals]
-
-    @cached_property
-    def param_names(self) -> set[str]:
-        """Names of defined parameters in the environment"""
-        return self.params.param_names
-
-    def clear_bindings(self) -> None:
-        """Clear all bindings in the environment"""
-        self.scopes = [{}]
-
-    def add_scope(self):
-        """Add a scope to the stack"""
-        self.scopes.append({})
-
-    def remove_scope(self):
-        """Remove a scope from the stack"""
-        self.scopes.pop()
+    scope_factory = dict
 
     def add_binding(self, name: str, val: Any):
-        """Add a binding to the local scope
+        """
+        Add a binding to the local scope.
+
         Args:
             name: variable name to add to scope
             val: value to bind name to
@@ -61,55 +35,36 @@ class Environment:
             raise ValueError(f"name {name} already bound in local scope")
         local_scope[name] = val
 
-    def get_binding(self, name: str):
-        """Look up a binding.
+    def get_binding(self, name: str) -> Any:
+        """
+        Look up a binding.
 
         Args:
             name: name to look up binding for
+
+        Returns:
+            value bound to the given name
         """
         for scope in reversed(self.scopes):
             if name in scope:
                 return scope[name]
         raise ValueError(f"name {name} not bound")
 
-    def get_param(self, name: str) -> float:
-        """Look up a parameter.
-
-        Args:
-            name: name of the parameter
-
-        Returns:
-            value of the parameter
-        """
-        return self.params[name]
-
-    @contextlib.contextmanager
-    def local_scope(self):
-        try:
-            self.add_scope()
-            yield self
-        finally:
-            self.remove_scope()
-
     @contextlib.contextmanager
     def local_binding(self, name: str, val):
+        """
+        Create a binding within a context.
+
+        Args:
+            name: the name to bind
+            val: the value to bind to the name
+        """
         try:
             self.add_scope()
             self.add_binding(name, val)
             yield self
         finally:
             self.remove_scope()
-
-
-# --- Base AST Node Classes ---
-
-
-@dataclass(frozen=True)
-class ASTNode(abc.ABC):
-    """
-    Abstract base class for all Abstract Syntax Tree nodes.
-    Provides a common interface for AST elements.
-    """
 
 
 @dataclass(frozen=True)
@@ -121,7 +76,7 @@ class Program(ASTNode):
     defs: dict[str, "ExpressionNode"]
     expr: "EffectfulNode"
 
-    def env(self, params: ParamVector) -> Environment:
+    def env(self, params: ParamVector) -> EvalEnv:
         """Create a fresh environment with the given parameters.
 
         Args:
@@ -130,7 +85,7 @@ class Program(ASTNode):
         Returns:
             new environment with the global bindings and given parameters
         """
-        return Environment(params=params, initial_vals=self.defs)
+        return EvalEnv(params=params, initial_vals=self.defs)
 
     def infer(self, params: ParamVector, val: "PureNode") -> float:
         """Perform inference over the whole program.
@@ -142,7 +97,7 @@ class Program(ASTNode):
         Return:
             probability assigned to the value by the program
         """
-        env = Environment(params=params, initial_vals=self.defs)
+        env = EvalEnv(params=params, initial_vals=self.defs)
         return self.expr.infer(env, val)
 
     @cached_property
@@ -166,7 +121,7 @@ class Program(ASTNode):
             )
         samples = []
         for _ in range(k):
-            env = Environment(params=params, initial_vals=self.defs)
+            env = EvalEnv(params=params, initial_vals=self.defs)
             samples.append(self.expr.sample(env))
         return samples
 
@@ -183,7 +138,7 @@ class ExpressionNode(ASTNode):
     """
 
     @abc.abstractmethod
-    def infer(self, env: Environment, val: "PureNode") -> float:
+    def infer(self, env: EvalEnv, val: "PureNode") -> float:
         """Infer the probability of a value for this program"""
 
     @cached_property
@@ -201,14 +156,14 @@ class PureNode(ExpressionNode):
     Abstract base class for expression (p) nodes.
     """
 
-    def eval(self, env: Environment) -> "PureNode":
+    def eval(self, env: EvalEnv) -> "PureNode":
         """Evaluate this pure expression"""
         return self
 
     def __bool__(self) -> bool:
         raise ValueError(f"truthiness check on non-boolean value {self}")
 
-    def infer(self, env: Environment, val: "PureNode") -> float:
+    def infer(self, env: EvalEnv, val: "PureNode") -> float:
         return float(self.eval(env) == val.eval(env))
 
     @cached_property
@@ -247,7 +202,7 @@ class VariableNode(PureNode):
         if not isinstance(self.name, str) or not self.name:
             raise ValueError("Variable name must be a non-empty string.")
 
-    def eval(self, env: Environment) -> PureNode:
+    def eval(self, env: EvalEnv) -> PureNode:
         return env.get_binding(self.name)
 
 
@@ -300,7 +255,7 @@ class IfElseNode(PureNode):
         if not isinstance(self.false_branch, PureNode):
             raise TypeError("False branch must be an instance of PureNode.")
 
-    def eval(self, env: Environment) -> PureNode:
+    def eval(self, env: EvalEnv) -> PureNode:
         cond_val = self.condition.eval(env)
         if bool(cond_val):  # Use bool() explicitly as PureNode has a custom __bool__
             return self.true_branch.eval(env)
@@ -331,7 +286,7 @@ class ConsNode(PureNode):
         if not isinstance(self.tail, PureNode):
             raise TypeError("Tail must be an instance of PureNode.")
 
-    def eval(self, env: Environment) -> PureNode:
+    def eval(self, env: EvalEnv) -> PureNode:
         return ConsNode(self.head.eval(env), self.tail.eval(env))
 
 
@@ -357,11 +312,11 @@ class EffectfulNode(ExpressionNode):
     """
 
     @abc.abstractmethod
-    def sample(self, env: Environment) -> PureNode:
+    def sample(self, env: EvalEnv) -> PureNode:
         """Sample a value from the program distribution"""
 
     @abc.abstractmethod
-    def possible_vals(self, env: Environment) -> set[PureNode]:
+    def possible_vals(self, env: EvalEnv) -> set[PureNode]:
         """Get possible values for this expression in a given context"""
 
     @cached_property
@@ -369,11 +324,11 @@ class EffectfulNode(ExpressionNode):
         """Get symbolic parameters of this expression and its subexpressions"""
         return set()
 
-    def gradient(self, env: Environment, val: PureNode) -> ParamVector:
+    def gradient(self, env: EvalEnv, val: PureNode) -> ParamVector:
         """Compute the gradient of the denotation for a particular value"""
         return ParamVector({p: self.deriv(env, p, val) for p in self.params})
 
-    def deriv(self, env: Environment, param: str, val: PureNode) -> float:
+    def deriv(self, env: EvalEnv, param: str, val: PureNode) -> float:
         """Compute the derivative of the denotation for some parameter
 
         Args:
@@ -406,13 +361,13 @@ class ReturnNode(EffectfulNode):
         if not isinstance(self.value, PureNode):
             raise TypeError("Return value must be an instance of PureNode.")
 
-    def possible_vals(self, env: Environment) -> set[PureNode]:
+    def possible_vals(self, env: EvalEnv) -> set[PureNode]:
         return {self.value.eval(env)}
 
-    def sample(self, env: Environment) -> PureNode:
+    def sample(self, env: EvalEnv) -> PureNode:
         return self.value.eval(env)
 
-    def infer(self, env: Environment, val: PureNode) -> float:
+    def infer(self, env: EvalEnv, val: PureNode) -> float:
         return self.value.infer(env, val)
 
 
@@ -435,19 +390,19 @@ class FlipNode(EffectfulNode):
         if isinstance(self.theta, float) and not (0.0 <= self.theta <= 1.0):
             raise ValueError("Theta must be between 0.0 and 1.0 (inclusive).")
 
-    def get_theta(self, env: Environment) -> float:
+    def get_theta(self, env: EvalEnv) -> float:
         """Get the value of the parameter."""
         if isinstance(self.theta, str):
             return env.get_param(self.theta)
         return self.theta
 
-    def sample(self, env: Environment) -> PureNode:
+    def sample(self, env: EvalEnv) -> PureNode:
         return boolean(random.random() < self.get_theta(env))
 
-    def possible_vals(self, env: Environment) -> set[PureNode]:
+    def possible_vals(self, env: EvalEnv) -> set[PureNode]:
         return {TrueNode(), FalseNode()}
 
-    def infer(self, env: Environment, val: PureNode) -> float:
+    def infer(self, env: EvalEnv, val: PureNode) -> float:
         val = val.eval(env)
         if isinstance(val, TrueNode):
             return self.get_theta(env)
@@ -455,7 +410,7 @@ class FlipNode(EffectfulNode):
             return 1 - self.get_theta(env)
         return 0.0
 
-    def deriv(self, env: Environment, param: str, val: PureNode) -> float:
+    def deriv(self, env: EvalEnv, param: str, val: PureNode) -> float:
         if isinstance(self.theta, float) or self.theta != param:
             return 0.0
 
@@ -504,19 +459,19 @@ class SequenceNode(EffectfulNode):
         if not isinstance(self.next_expr, EffectfulNode):
             raise TypeError("Next expression must be an instance of ExpressionNode.")
 
-    def sample(self, env: Environment) -> PureNode:
+    def sample(self, env: EvalEnv) -> PureNode:
         bind_val = self.assignment_expr.sample(env)
         env.add_binding(self.variable_name, bind_val)
         return self.next_expr.sample(env)
 
-    def possible_vals(self, env: Environment) -> set[PureNode]:
+    def possible_vals(self, env: EvalEnv) -> set[PureNode]:
         poss = set()
         for val in self.assignment_expr.possible_vals(env):
             with env.local_binding(self.variable_name, val):
                 poss |= self.next_expr.possible_vals(env)
         return poss
 
-    def infer(self, env: Environment, val: PureNode) -> float:
+    def infer(self, env: EvalEnv, val: PureNode) -> float:
         # The denotation of a sequence is the sum of the products of the
         # probabilities of each possible intermediate value resulting in the
         # given value being produced:
@@ -528,7 +483,7 @@ class SequenceNode(EffectfulNode):
                 prob += bound_val_prob * self.next_expr.infer(env, val)
         return prob
 
-    def deriv(self, env: Environment, param: str, val: PureNode) -> float:
+    def deriv(self, env: EvalEnv, param: str, val: PureNode) -> float:
         # The derivative of a sequence is computed with the product rule using
         # the formula given in infer().
 

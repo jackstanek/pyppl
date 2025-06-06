@@ -1,8 +1,8 @@
 import pytest
 
+from pyppl.ast import EvalEnv
 from pyppl.ast import (
     ConsNode,
-    Environment,
     EffectfulNode,
     FalseNode,
     FlipNode,
@@ -15,6 +15,12 @@ from pyppl.ast import (
     VariableNode,
     var,
 )
+from pyppl.params import ParamVector
+
+
+@pytest.fixture
+def env():
+    return EvalEnv(params=ParamVector())
 
 
 # Assume PureNode is defined elsewhere, for testing purposes we'll mock it.
@@ -34,25 +40,22 @@ class MockPureNode(PureNode):
 
 
 # Pytest functions to replace unittest.TestCase methods
-def test_initialization():
+def test_initialization(env):
     """Test that the Environment is initialized with one empty scope."""
-    env = Environment()
     assert len(env.scopes) == 1
     assert env.scopes[0] == {}
 
 
-def test_add_scope():
+def test_add_scope(env):
     """Test adding a new scope to the environment."""
-    env = Environment()
     initial_scopes_len = len(env.scopes)
     env.add_scope()
     assert len(env.scopes) == initial_scopes_len + 1
     assert env.scopes[-1] == {}  # New scope should be empty
 
 
-def test_remove_scope():
+def test_remove_scope(env):
     """Test removing a scope from the environment."""
-    env = Environment()
     env.add_scope()  # Add a second scope to remove
     initial_scopes_len = len(env.scopes)
     env.remove_scope()
@@ -60,13 +63,12 @@ def test_remove_scope():
     assert env.scopes[-1] == {}  # Should be back to the initial empty scope
 
 
-def test_remove_last_scope():
+def test_remove_last_scope(env):
     """
     Test removing the very last scope.
     Note: The current implementation allows this, which might be an
     undesired state for an environment that always needs a global scope.
     """
-    env = Environment()
     # Initial state: [{'global_scope'}]
     assert len(env.scopes) == 1
     env.remove_scope()
@@ -77,20 +79,18 @@ def test_remove_last_scope():
         env.add_binding("x", MockPureNode(10))
 
 
-def test_add_binding_new_name():
+def test_add_binding_new_name(env):
     """Test adding a new binding to the current local scope."""
-    env = Environment()
     node_x = MockPureNode(10)
     env.add_binding("x", node_x)
     assert env.scopes[-1]["x"] == node_x
 
 
-def test_add_binding_existing_name_local_scope():
+def test_add_binding_existing_name_local_scope(env):
     """
     Test adding a binding with a name that already exists in the local scope
     should raise a ValueError.
     """
-    env = Environment()
     node_x1 = MockPureNode(10)
     node_x2 = MockPureNode(20)
     env.add_binding("x", node_x1)
@@ -98,17 +98,15 @@ def test_add_binding_existing_name_local_scope():
         env.add_binding("x", node_x2)
 
 
-def test_get_binding_local_scope():
+def test_get_binding_local_scope(env):
     """Test retrieving a binding from the local scope."""
-    env = Environment()
     node_y = MockPureNode("hello")
     env.add_binding("y", node_y)
     assert env.get_binding("y") == node_y
 
 
-def test_get_binding_outer_scope():
+def test_get_binding_outer_scope(env):
     """Test retrieving a binding from an outer scope."""
-    env = Environment()
     node_a = MockPureNode(100)
     env.add_binding("a", node_a)  # Add to global scope
 
@@ -120,9 +118,8 @@ def test_get_binding_outer_scope():
     assert env.get_binding("b") == node_b  # 'b' should be found in local scope
 
 
-def test_get_binding_shadowing():
+def test_get_binding_shadowing(env):
     """Test binding lookup with shadowing (local scope hides outer scope)."""
-    env = Environment()
     node_x_outer = MockPureNode(10)
     env.add_binding("x", node_x_outer)  # x in global scope
 
@@ -136,9 +133,8 @@ def test_get_binding_shadowing():
     assert env.get_binding("x") == node_x_outer  # Should now get the outer 'x'
 
 
-def test_get_binding_not_found():
+def test_get_binding_not_found(env):
     """Test that attempting to get a non-existent binding raises a ValueError."""
-    env = Environment()
     with pytest.raises(ValueError, match="name z not bound"):
         env.get_binding("z")
 
@@ -148,9 +144,8 @@ def test_get_binding_not_found():
         env.get_binding("baz")
 
 
-def test_complex_scope_management_and_bindings():
+def test_complex_scope_management_and_bindings(env):
     """Test a more complex scenario with multiple scopes and bindings."""
-    env = Environment()  # scopes = [{}]
     node1 = MockPureNode(1)
     env.add_binding("var1", node1)  # scopes = [{'var1': 1}]
 
@@ -194,16 +189,14 @@ def test_complex_scope_management_and_bindings():
     assert env.get_binding("var1") == node1
 
 
-def test_purenode_eval():
+def test_purenode_eval(env):
     """Test PureNode.eval returns self."""
     node = MockPureNode("hello")
-    env = Environment()
     assert node.eval(env) is node
 
 
-def test_variablenode_eval():
+def test_variablenode_eval(env):
     """Test VariableNode.eval retrieves binding from environment."""
-    env = Environment()
     var_name = "my_var"
     bound_value = TrueNode()
     env.add_binding(var_name, bound_value)
@@ -233,9 +226,8 @@ def test_purenodes_not_converted_to_bool():
         bool(PureNode())
 
 
-def test_ifelsenode_eval_true_condition():
+def test_ifelsenode_eval_true_condition(env):
     """Test IfElseNode.eval with a true condition."""
-    env = Environment()
     condition = TrueNode()
     true_branch_result = NilNode()
     false_branch_result = VariableNode("x")  # This won't be evaluated
@@ -253,9 +245,8 @@ def test_ifelsenode_eval_true_condition():
     assert if_else_node.eval(env) is true_branch_result
 
 
-def test_ifelsenode_eval_false_condition():
+def test_ifelsenode_eval_false_condition(env):
     """Test IfElseNode.eval with a false condition."""
-    env = Environment()
     condition = FalseNode()
     true_branch_result = NilNode()  # This won't be evaluated
     false_branch_result = VariableNode("x")
@@ -272,9 +263,8 @@ def test_ifelsenode_eval_false_condition():
     assert if_else_node.eval(env) is false_branch_result
 
 
-def test_consonde_eval():
+def test_consonde_eval(env):
     """Test ConsNode.eval evaluates head and tail and returns a new ConsNode."""
-    env = Environment()
     head_val = TrueNode()
     tail_val = NilNode()
 
@@ -299,17 +289,15 @@ def test_consonde_eval():
 # --- Pytest Tests for sample() methods ---
 
 
-def test_returnnode_sample():
+def test_returnnode_sample(env):
     """Test ReturnNode.sample returns the wrapped value."""
-    env = Environment()
     value_node = TrueNode()
     return_node = ReturnNode(value_node)
     assert return_node.sample(env) is value_node
 
 
-def test_returnnode_sample_var():
+def test_returnnode_sample_var(env):
     """Test ReturnNode.sample returns a variable lookup."""
-    env = Environment()
     value_node = TrueNode()
     varname = "x"
     var_node = var(varname)
@@ -318,9 +306,8 @@ def test_returnnode_sample_var():
     assert return_node.sample(env) is value_node
 
 
-def test_flipnode_sample_true(mocker):
+def test_flipnode_sample_true(mocker, env):
     """Test FlipNode.sample returns TrueNode when random.random() is less than theta."""
-    env = Environment()
     theta = 0.7
     flip_node = FlipNode(theta)
 
@@ -330,9 +317,8 @@ def test_flipnode_sample_true(mocker):
     assert isinstance(result, TrueNode)
 
 
-def test_flipnode_sample_false(mocker):
+def test_flipnode_sample_false(mocker, env):
     """Test FlipNode.sample returns FalseNode when random.random() is greater than or equal to theta."""
-    env = Environment()
     theta = 0.3
     flip_node = FlipNode(theta)
 
@@ -342,9 +328,8 @@ def test_flipnode_sample_false(mocker):
     assert isinstance(result, FalseNode)
 
 
-def test_sequencenode_sample(mocker):
+def test_sequencenode_sample(mocker, env):
     """Test SequenceNode.sample binds assignment_expr result and samples next_expr."""
-    env = Environment()
     var_name = "my_seq_var"
     assigned_value = NilNode()
     next_expr_result = TrueNode()
@@ -373,24 +358,21 @@ def test_sequencenode_sample(mocker):
     assert env.get_binding(var_name) is assigned_value
 
 
-def test_seq_possible_vals_return():
+def test_seq_possible_vals_return(env):
     """Test sequencing possible values with a return"""
-    env = Environment()
     expr = SequenceNode("x", FlipNode(0.5), ReturnNode(var("x")))
 
     assert expr.possible_vals(env) == {TrueNode(), FalseNode()}
 
 
-def test_seq_return_inference():
+def test_seq_return_inference(env):
     """Test sequencing a flip and a return"""
-    env = Environment()
     expr = SequenceNode("x", FlipNode(0.5), ReturnNode(var("x")))
     assert expr.infer(env, TrueNode()) == 0.5
 
 
-def test_seq_flip_inference():
+def test_seq_flip_inference(env):
     """Test sequencing flip values"""
-    env = Environment()
     expr = SequenceNode(
         "x",
         FlipNode(0.5),
@@ -405,7 +387,7 @@ def test_seq_flip_inference():
 
 def test_flip_gradient():
     """Test calculating the gradient of a flip"""
-    env = Environment({"theta": 0.5})
+    env = EvalEnv(ParamVector({"theta": 0.5}))
     expr = FlipNode("theta")
     assert expr.gradient(env, TrueNode()) == {"theta": 1.0}
     assert expr.gradient(env, FalseNode()) == {"theta": -1.0}
@@ -414,7 +396,7 @@ def test_flip_gradient():
 
 def test_seq_gradient():
     """Test calculating the gradient of a sequence"""
-    env = Environment({"theta": 0.5})
+    env = EvalEnv(ParamVector({"theta": 0.5}))
     if_val = NilNode()
     else_val = ConsNode(TrueNode(), NilNode())
     expr = SequenceNode(
