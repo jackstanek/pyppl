@@ -1,5 +1,4 @@
-define tt = cons y nil
+define tt = cons true nil
 
 x <- flip theta_1;
-y <- flip theta_2;
 return if x then tt else nil

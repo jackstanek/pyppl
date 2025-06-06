@@ -19,6 +19,11 @@ class ParamVector(dict):
             # Convert all initial values to float
             super().__setitem__(k, float(v))
 
+    @property
+    def param_names(self) -> set[str]:
+        """Get a set of the names of the parameters in this vector."""
+        return set(self.keys())
+
     @classmethod
     def zero(cls, params: Collection[str]) -> "ParamVector":
         """Initialize a zero vector with the given parameter names.

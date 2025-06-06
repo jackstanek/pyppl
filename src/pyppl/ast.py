@@ -36,7 +36,7 @@ class Environment:
     @cached_property
     def param_names(self) -> set[str]:
         """Names of defined parameters in the environment"""
-        return set(self.params.keys())
+        return self.params.param_names
 
     def clear_bindings(self) -> None:
         """Clear all bindings in the environment"""
@@ -84,7 +84,7 @@ class Environment:
         return self.params[name]
 
     @contextlib.contextmanager
-    def temp_scope(self):
+    def local_scope(self):
         try:
             self.add_scope()
             yield self
@@ -92,7 +92,7 @@ class Environment:
             self.remove_scope()
 
     @contextlib.contextmanager
-    def temp_binding(self, name: str, val):
+    def local_binding(self, name: str, val):
         try:
             self.add_scope()
             self.add_binding(name, val)
@@ -159,16 +159,15 @@ class Program(ASTNode):
             Resulting value from sampling
 
         """
-        env = Environment(params=params, initial_vals=self.defs)
-        undefined_params = self.expr.params - env.param_names
+        undefined_params = self.expr.params - params.param_names
         if undefined_params:
             raise UndefinedParamError(
                 f"""undefined parameters: {",".join(undefined_params)}"""
             )
         samples = []
         for _ in range(k):
+            env = Environment(params=params, initial_vals=self.defs)
             samples.append(self.expr.sample(env))
-            env.clear_bindings()
         return samples
 
     def gradient(self, params: ParamVector, val: "PureNode") -> ParamVector:
@@ -217,7 +216,7 @@ class PureNode(ExpressionNode):
         return set()
 
 
-def var(name: str) -> "PureNode":
+def var(name: str) -> "VariableNode":
     """Construct a variable node"""
     return VariableNode(name)
 
@@ -513,7 +512,7 @@ class SequenceNode(EffectfulNode):
     def possible_vals(self, env: Environment) -> set[PureNode]:
         poss = set()
         for val in self.assignment_expr.possible_vals(env):
-            with env.temp_binding(self.variable_name, val):
+            with env.local_binding(self.variable_name, val):
                 poss |= self.next_expr.possible_vals(env)
         return poss
 
@@ -524,7 +523,7 @@ class SequenceNode(EffectfulNode):
         # sum_{v in val} [[assign]](env, v) * [[next]](env[x |-> v], val)
         prob = 0.0
         for poss_val in self.assignment_expr.possible_vals(env):
-            with env.temp_binding(self.variable_name, poss_val):
+            with env.local_binding(self.variable_name, poss_val):
                 bound_val_prob = self.assignment_expr.infer(env, poss_val)
                 prob += bound_val_prob * self.next_expr.infer(env, val)
         return prob
@@ -536,7 +535,7 @@ class SequenceNode(EffectfulNode):
         # Sum derivatives of each possible value
         deriv = 0.0
         for poss_val in self.assignment_expr.possible_vals(env):
-            with env.temp_binding(self.variable_name, poss_val):
+            with env.local_binding(self.variable_name, poss_val):
                 del_e2 = self.next_expr.deriv(env, param, val)
                 e2 = self.next_expr.infer(env, val)
             del_e1 = self.assignment_expr.deriv(env, param, poss_val)
