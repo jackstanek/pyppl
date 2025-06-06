@@ -17,10 +17,29 @@ class ASTNode(abc.ABC):
     """
 
 
+@dataclass
 class EvalEnv(BaseEnv):
     """Naming environment for expression evaluation"""
 
+    params: ParamVector
     scope_factory = dict
+
+    @cached_property
+    def param_names(self) -> set[str]:
+        """Names of defined parameters in the environment"""
+        return self.params.param_names
+
+    def get_param(self, name: str) -> float:
+        """
+        Look up a parameter.
+
+        Args:
+            name: name of the parameter
+
+        Returns:
+            value of the parameter
+        """
+        return self.params[name]
 
     def add_binding(self, name: str, val: Any):
         """
