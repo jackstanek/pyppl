@@ -176,4 +176,4 @@ def test_parsing_program_with_def():
         return foo
     """
     prog = parse(code)
-    assert "foo" in prog.defs
+    assert "foo" in prog.defns

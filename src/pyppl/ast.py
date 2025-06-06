@@ -1,6 +1,7 @@
 import abc
 import contextlib
 import random
+from collections.abc import Generator
 from dataclasses import dataclass
 from functools import cached_property
 from typing import Any, List
@@ -92,7 +93,7 @@ class Program(ASTNode):
     Base class for programs (definitions followed by an effectful expression)
     """
 
-    defs: dict[str, "ExpressionNode"]
+    defns: dict[str, "ExpressionNode"]
     expr: "EffectfulNode"
 
     def env(self, params: ParamVector) -> EvalEnv:
@@ -104,7 +105,7 @@ class Program(ASTNode):
         Returns:
             new environment with the global bindings and given parameters
         """
-        return EvalEnv(params=params, initial_vals=self.defs)
+        return EvalEnv(params=params, initial_vals=self.defns)
 
     def infer(self, params: ParamVector, val: "PureNode") -> float:
         """Perform inference over the whole program.
@@ -116,12 +117,12 @@ class Program(ASTNode):
         Return:
             probability assigned to the value by the program
         """
-        env = EvalEnv(params=params, initial_vals=self.defs)
+        env = EvalEnv(params=params, initial_vals=self.defns)
         return self.expr.infer(env, val)
 
     @cached_property
     def params(self) -> set[str]:
-        return self.expr.params.union(*(b.params for b in self.defs.values()))
+        return self.expr.params.union(*(b.params for b in self.defns.values()))
 
     def sample(self, params: ParamVector, k: int = 1) -> List["PureNode"]:
         """Sample at the top-level with an environment containing the global definitions
@@ -140,7 +141,7 @@ class Program(ASTNode):
             )
         samples = []
         for _ in range(k):
-            env = EvalEnv(params=params, initial_vals=self.defs)
+            env = EvalEnv(params=params, initial_vals=self.defns)
             samples.append(self.expr.sample(env))
         return samples
 
@@ -164,6 +165,11 @@ class ExpressionNode(ASTNode):
     @abc.abstractmethod
     def params(self) -> set[str]:
         """Set of parameter names in this sub-expression"""
+
+    @property
+    def subexpressions(self) -> Generator["ExpressionNode"]:
+        """Yield the subexpressions of this expression"""
+        yield from ()
 
 
 # --- Pure (p) Classes ---
@@ -280,6 +286,10 @@ class IfElseNode(PureNode):
             return self.true_branch.eval(env)
         return self.false_branch.eval(env)
 
+    @property
+    def subexpressions(self) -> Generator[ExpressionNode]:
+        yield from (self.condition, self.true_branch, self.false_branch)
+
 
 @dataclass(frozen=True)
 class ConsNode(PureNode):
@@ -307,6 +317,10 @@ class ConsNode(PureNode):
 
     def eval(self, env: EvalEnv) -> PureNode:
         return ConsNode(self.head.eval(env), self.tail.eval(env))
+
+    @property
+    def subexpressions(self) -> Generator[ExpressionNode]:
+        yield from (self.head, self.tail)
 
 
 @dataclass(frozen=True)
@@ -388,6 +402,10 @@ class ReturnNode(EffectfulNode):
 
     def infer(self, env: EvalEnv, val: PureNode) -> float:
         return self.value.infer(env, val)
+
+    @property
+    def subexpressions(self) -> Generator[ExpressionNode]:
+        yield from (self.value,)
 
 
 @dataclass(frozen=True)
@@ -520,3 +538,7 @@ class SequenceNode(EffectfulNode):
     @cached_property
     def params(self) -> set[str]:
         return self.assignment_expr.params | self.next_expr.params
+
+    @property
+    def subexpressions(self) -> Generator[ExpressionNode]:
+        yield from (self.assignment_expr, self.next_expr)
