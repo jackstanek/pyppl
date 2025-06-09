@@ -1,5 +1,6 @@
 import abc
 import contextlib
+import logging
 import random
 from collections.abc import Generator
 from dataclasses import dataclass
@@ -8,6 +9,8 @@ from typing import Any, List
 
 from pyppl.environment import BaseEnv
 from pyppl.params import ParamVector
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -189,7 +192,10 @@ class PureNode(ExpressionNode):
         raise ValueError(f"truthiness check on non-boolean value {self}")
 
     def infer(self, env: EvalEnv, val: "PureNode") -> float:
-        return float(self.eval(env) == val.eval(env))
+        self_eval = self.eval(env)
+        val_eval = val.eval(env)
+        LOGGER.debug("env: %s; comparing %s == %s", env, self_eval, val_eval)
+        return float(self_eval == val_eval)
 
     @cached_property
     def params(self) -> set[str]:
@@ -497,9 +503,10 @@ class SequenceNode(EffectfulNode):
             raise TypeError("Next expression must be an instance of ExpressionNode.")
 
     def sample(self, env: EvalEnv) -> PureNode:
-        bind_val = self.assignment_expr.sample(env)
-        env.add_binding(self.variable_name, bind_val)
-        return self.next_expr.sample(env)
+        with env.local_scope():
+            bind_val = self.assignment_expr.sample(env)
+            env.add_binding(self.variable_name, bind_val)
+            return self.next_expr.sample(env)
 
     def possible_vals(self, env: EvalEnv) -> set[PureNode]:
         poss = set()
@@ -516,6 +523,12 @@ class SequenceNode(EffectfulNode):
         prob = 0.0
         for poss_val in self.assignment_expr.possible_vals(env):
             with env.local_binding(self.variable_name, poss_val):
+                LOGGER.debug(
+                    "bound %s to %s; inferring probability of %s",
+                    self.variable_name,
+                    poss_val,
+                    self.next_expr,
+                )
                 bound_val_prob = self.assignment_expr.infer(env, poss_val)
                 prob += bound_val_prob * self.next_expr.infer(env, val)
         return prob

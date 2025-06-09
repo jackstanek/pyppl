@@ -137,6 +137,24 @@ def test_initialization_and_type_conversion():
     assert isinstance(v["y"], float)
 
 
+def test_setting_custom_type():
+    """
+    Tests setting custom types for ParamVectors.
+    """
+    v = ParamVector({"x": 10.0, "y": 9.0}, valtype=int)
+    assert v == {"x": 10, "y": 9}
+    assert isinstance(v["x"], int)
+    assert isinstance(v["y"], int)
+
+
+def test_using_refined_types():
+    """
+    Tests setting a refined type for ParamVectors.
+    """
+    v = ParamVector({"x": 1}, valtype=lambda x: x + 1)
+    assert v == {"x": 2}
+
+
 def test_empty_param_vector_operations():
     """
     Tests operations on an empty ParamVector.

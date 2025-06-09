@@ -1,6 +1,8 @@
 import argparse
+import logging
 import pickle
 import random
+import sys
 from typing import Any
 
 from pyppl import ast
@@ -100,7 +102,17 @@ class PickleDumper:
         return exc_type is None
 
 
+def clamp_float(x: float, low: float = 0.0, hi: float = 1.0) -> float:
+    """Clamp a float value."""
+    return max((min((hi, x)), low))
+
+
 def main():
+    logging.basicConfig(
+        stream=sys.stderr,
+        level=logging.INFO,
+        format="%(levelname)s - %(name)s: %(message)s",
+    )
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(required=True, dest="command")
     generate_parser = subparsers.add_parser("generate")
@@ -121,6 +133,12 @@ def main():
     )
     learn_parser = subparsers.add_parser("learn")
     learn_parser.add_argument(
+        "--epochs", "-e", type=int, default=100, help="number of learning epochs"
+    )
+    learn_parser.add_argument(
+        "--lr", "-r", type=float, default=0.001, help="learning rate"
+    )
+    learn_parser.add_argument(
         "program", type=argparse.FileType("r"), help="path to program source"
     )
     learn_parser.add_argument("data", help="path to training set")
@@ -133,7 +151,9 @@ def main():
                 params = []
             else:
                 params = args.params
-            samples = prog_ast.sample(ParamVector(params), k=args.n_samples)
+            samples = prog_ast.sample(
+                ParamVector(params, valtype=clamp_float), k=args.n_samples
+            )
         with PickleDumper(args.data) as dumper:
             dumper.dump(samples)
 
@@ -141,7 +161,9 @@ def main():
         with args.program, PickleLoader(args.data) as loader:
             prog_ast = parse(args.program.read())
             samples = loader.load()
-            params = optimize(prog_ast, samples)
+            params = optimize(
+                prog_ast, samples, epochs=args.epochs, learning_rate=args.lr
+            )
             print(f"learned parameters: {params}")
 
 

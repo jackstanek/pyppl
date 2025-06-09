@@ -1,11 +1,11 @@
 import random
-from typing import Any, Collection
+from typing import Any, Callable, Collection
 
 
 class ParamVector(dict):
     """A vector of program parameters"""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, valtype: Callable[[Any], float] = float, **kwargs):
         """Initializes the ParamVector.
 
         Ensures all initial values are converted to floats.
@@ -15,9 +15,12 @@ class ParamVector(dict):
             **kwargs: Arbitrary keyword arguments to pass to dict constructor.
         """
         super().__init__(*args, **kwargs)
+
         for k, v in self.items():
-            # Convert all initial values to float
-            super().__setitem__(k, float(v))
+            # Convert initial values to the value type
+            super().__setitem__(k, valtype(v))
+
+        self.valtype = valtype
 
     @property
     def param_names(self) -> set[str]:
@@ -255,5 +258,5 @@ class ParamVector(dict):
         """
         if key not in self:
             raise ValueError(f"no such key {key} in vector (keys: {list(self.keys())})")
-        # Ensure the value is converted to float before storing
-        super().__setitem__(key, float(value))
+        # Ensure the value is converted to the proper type before storing
+        super().__setitem__(key, self.valtype(value))
