@@ -1,5 +1,5 @@
 import random
-from typing import Any, Callable, Collection
+from typing import Any, Callable, Collection, Optional
 
 
 class ParamVector(dict):
@@ -28,7 +28,9 @@ class ParamVector(dict):
         return set(self.keys())
 
     @classmethod
-    def zero(cls, params: Collection[str]) -> "ParamVector":
+    def zero(
+        cls, params: Collection[str], valtype: Optional[Callable[[Any], float]] = None
+    ) -> "ParamVector":
         """Initialize a zero vector with the given parameter names.
 
         Args:
@@ -37,10 +39,17 @@ class ParamVector(dict):
         Returns:
             parameter vector with the given names, with all values set to zero
         """
-        return cls((k, 0) for k in params)
+        if valtype is None:
+            if isinstance(params, ParamVector):
+                valtype = params.valtype
+            else:
+                valtype = float
+        return cls(((k, 0) for k in params), valtype=valtype)
 
     @classmethod
-    def random(cls, params: Collection[str]) -> "ParamVector":
+    def random(
+        cls, params: Collection[str], valtype: Optional[Callable[[Any], float]] = None
+    ) -> "ParamVector":
         """Initialize a random vector with the given parameter names.
 
         Args:
@@ -50,7 +59,12 @@ class ParamVector(dict):
             parameter vector with the given names, with all values set random
             values in [0, 1]
         """
-        return cls((k, random.random()) for k in params)
+        if valtype is None:
+            if isinstance(params, ParamVector):
+                valtype = params.valtype
+            else:
+                valtype = float
+        return cls(((k, random.random()) for k in params), valtype=valtype)
 
     def squared_l2_norm(self) -> float:
         """Get the squared L2 norm of this vector

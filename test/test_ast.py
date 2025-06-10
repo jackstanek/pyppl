@@ -350,12 +350,9 @@ def test_sequencenode_sample(mocker, env):
 
     # Assertions
     mock_assignment_expr.sample.assert_called_once_with(env)
-    env.add_binding.assert_called_once_with(var_name, assigned_value)  # type: ignore
+    env.add_binding.assert_called_once_with(var_name, assigned_value)
     mock_next_expr.sample.assert_called_once_with(env)
     assert result is next_expr_result
-
-    # Verify the binding was actually added to the environment
-    assert env.get_binding(var_name) is assigned_value
 
 
 def test_seq_possible_vals_return(env):

@@ -12,8 +12,10 @@ import logging
 import math
 
 from pyppl import ast
+from pyppl.floatutil import clamp
 from pyppl.params import ParamVector
 
+EPSILON = 1e-6
 LOGGER = logging.getLogger(__name__)
 
 
@@ -22,14 +24,11 @@ def avg_negative_log_likelihood(
 ) -> float:
     """Compute the negative log-likelihood of a collection of data."""
     acc = 0
-    n_possible = 0
     for datum in data:
         LOGGER.debug("Computing avg NLL for %s", datum)
-        prob = prog.infer(params, datum)
-        if prob > 0:
-            acc -= math.log(prob)
-            n_possible += 1
-    return acc / n_possible
+        prob = max(EPSILON, prog.infer(params, datum))
+        acc -= math.log(prob)
+    return acc / len(data)
 
 
 def avg_negative_log_likelihood_gradient(
@@ -47,13 +46,10 @@ def avg_negative_log_likelihood_gradient(
         and the parameters
     """
     grad = ParamVector.zero(params)
-    n_possible = 0
     for datum in data:
-        prob = prog.infer(params, datum)
-        if prob > 0:
-            grad -= prog.gradient(params, datum) / prob
-            n_possible += 1
-    return grad / n_possible
+        prob = max(EPSILON, prog.infer(params, datum))
+        grad -= prog.gradient(params, datum) / prob
+    return grad / len(data)
 
 
 def optimize(
@@ -63,7 +59,7 @@ def optimize(
     learning_rate: float = 0.01,
 ) -> ParamVector:
     """Optimize parameters to maximize the likelihood of the training set"""
-    params = ParamVector.random(prog.params)
+    params = ParamVector.random(prog.params, valtype=clamp)
     for epoch in range(epochs):
         nll = avg_negative_log_likelihood(prog, params, data)
         print(f"epoch: {epoch}; nll: {nll}")

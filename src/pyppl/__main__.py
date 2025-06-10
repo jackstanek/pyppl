@@ -6,6 +6,7 @@ import sys
 from typing import Any
 
 from pyppl import ast
+from pyppl.floatutil import clamp
 from pyppl.learning import optimize
 from pyppl.params import ParamVector
 from pyppl.parser import parse
@@ -102,18 +103,11 @@ class PickleDumper:
         return exc_type is None
 
 
-def clamp_float(x: float, low: float = 0.0, hi: float = 1.0) -> float:
-    """Clamp a float value."""
-    return max((min((hi, x)), low))
-
-
 def main():
-    logging.basicConfig(
-        stream=sys.stderr,
-        level=logging.INFO,
-        format="%(levelname)s - %(name)s: %(message)s",
-    )
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--log-level", type=str.upper, default="INFO", help="output log level"
+    )
     subparsers = parser.add_subparsers(required=True, dest="command")
     generate_parser = subparsers.add_parser("generate")
     generate_parser.add_argument(
@@ -136,13 +130,19 @@ def main():
         "--epochs", "-e", type=int, default=100, help="number of learning epochs"
     )
     learn_parser.add_argument(
-        "--lr", "-r", type=float, default=0.001, help="learning rate"
+        "--lr", "-r", type=float, default=0.01, help="learning rate"
     )
     learn_parser.add_argument(
         "program", type=argparse.FileType("r"), help="path to program source"
     )
     learn_parser.add_argument("data", help="path to training set")
+
     args = parser.parse_args()
+    logging.basicConfig(
+        stream=sys.stderr,
+        level=args.log_level,
+        format="%(levelname)s - %(name)s: %(message)s",
+    )
 
     if args.command == "generate":
         with args.program:
@@ -152,7 +152,7 @@ def main():
             else:
                 params = args.params
             samples = prog_ast.sample(
-                ParamVector(params, valtype=clamp_float), k=args.n_samples
+                ParamVector(params, valtype=clamp), k=args.n_samples
             )
         with PickleDumper(args.data) as dumper:
             dumper.dump(samples)
