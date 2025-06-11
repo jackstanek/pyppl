@@ -337,6 +337,16 @@ class NilNode(PureNode):
     """
 
 
+@dataclass(frozen=True)
+class FuncNode(PureNode):
+    """
+    Represents a function, either anonymous or not.
+    """
+
+    formals: list[str]
+    body: ExpressionNode
+
+
 # --- Expression (e) Classes ---
 
 

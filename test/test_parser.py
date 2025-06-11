@@ -63,6 +63,26 @@ def test_cons_node():
     assert isinstance(cons_node.tail, _ast.FalseNode)
 
 
+def test_func_node():
+    """Tests the transformation of an anonymous function expression."""
+    code = """define foo = \\x -> true
+    return true"""
+    fun = parse(code).defns["foo"]
+    assert isinstance(fun, _ast.FuncNode)
+    assert fun.formals == ["x"]
+    assert isinstance(fun.body, _ast.TrueNode)
+
+
+def test_func_node_multiple_args():
+    """Tests the transformation of an anonymous function expression."""
+    code = """define ifthenelse = \\x y z -> if x then y else z
+    return true"""
+    fun = parse(code).defns["ifthenelse"]
+    assert isinstance(fun, _ast.FuncNode)
+    assert fun.formals == ["x", "y", "z"]
+    assert isinstance(fun.body, _ast.IfElseNode)
+
+
 def test_flip_expr_float():
     """Tests the transformation of a 'flip' expression with a float parameter."""
     expr = parse_expr("flip 0.5")

@@ -7,7 +7,7 @@ pyppl_parser = Lark(
     prog              : defn* eff_expr
     defn              : var_defn | fun_defn
     var_defn          : "define" VAR_OR_PARAM_NAME "=" expr
-    fun_defn          : "define" VAR_OR_PARAM_NAME VAR_OR_PARAM_NAME+ "=" expr
+    fun_defn          : "define" VAR_OR_PARAM_NAME args "=" expr
     expr              : eff_expr
                       | pure_expr
     eff_expr          : VAR_OR_PARAM_NAME "<-" non_bind_eff_expr ";" eff_expr -> bind_expr
@@ -25,9 +25,11 @@ pyppl_parser = Lark(
                       | "nil" -> nil
                       | "(" pure_expr ")"
                       | VAR_OR_PARAM_NAME -> var
+                      | "\\" args "->" expr -> raw_fun
     # The negative lookahead `(?!...)` ensures that the regex will not match
     # if the current position is at the start of any of the listed keywords.
     VAR_OR_PARAM_NAME : /(?!if\b|then\b|else\b|true\b|false\b|cons\b|nil\b|flip\b|return\b|define\b)[a-zA-Z_][a-zA-Z0-9_]*/
+    args              : VAR_OR_PARAM_NAME+
 
     %import common.WS
     %import common.FLOAT
@@ -119,6 +121,15 @@ class PypplTransformer(Transformer):
             A `ReturnNode` representing the return expression.
         """
         return ast.ReturnNode(pure_expr)
+
+    def raw_fun(self, args, body):
+        """Handles the raw (anonymous) function rule to construct lambdas.
+
+        This corresponds to the syntax `\\x -> e`.
+
+        Args:
+        """
+        return ast.FuncNode(args, body)
 
     # Parameters
     def float_param(self, value):
@@ -239,6 +250,10 @@ class PypplTransformer(Transformer):
     def expr(self, child):
         """Passes through a transformed expr"""
         return child
+
+    def args(self, *args):
+        """Passes through a list of arguments"""
+        return list(args)
 
     def eff_expr(self, child):
         """Passes through the transformed child for rules that don't create new AST nodes.
