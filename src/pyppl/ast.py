@@ -338,9 +338,9 @@ class NilNode(PureNode):
 
 
 @dataclass(frozen=True)
-class FuncNode(PureNode):
+class PureFuncNode(PureNode):
     """
-    Represents a function, either anonymous or not.
+    Represents a pure function object.
     """
 
     args: list[str]
@@ -360,7 +360,7 @@ class PureApplNode(PureNode):
 
     def eval(self, env: EvalEnv) -> PureNode:
         eval_func = self.func.eval(env)
-        if not isinstance(eval_func, FuncNode):
+        if not isinstance(eval_func, PureFuncNode):
             raise ValueError(f"Tried to apply non-function value ({eval_func})")
 
         eval_args = [arg.eval(env) for arg in self.args]
@@ -415,11 +415,43 @@ class EffectfulNode(ExpressionNode):
 
 
 @dataclass(frozen=True)
+class EffFuncNode(EffectfulNode):
+    """
+    Represents an effectful function object.
+    """
+
+    args: list[str]
+    body: ExpressionNode
+
+    def sample(self, env: EvalEnv) -> PureNode:
+        return super().sample(env)
+
+    def possible_vals(self, env: EvalEnv) -> set[PureNode]:
+        return super().possible_vals(env)
+
+    def infer(self, env: EvalEnv, val: PureNode) -> float:
+        return super().infer(env, val)
+
+
+@dataclass(frozen=True)
 class EffApplNode(EffectfulNode):
-    """Effectful function application.
+    """
+    Effectful function application.
 
     Reduces to monadic bind.
     """
+
+    func: EffFuncNode
+    args: list[PureNode]
+
+    def sample(self, env: EvalEnv) -> PureNode:
+        return super().sample(env)
+
+    def possible_vals(self, env: EvalEnv) -> set[PureNode]:
+        return super().possible_vals(env)
+
+    def infer(self, env: EvalEnv, val: PureNode) -> float:
+        return super().infer(env, val)
 
 
 @dataclass(frozen=True)

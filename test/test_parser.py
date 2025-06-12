@@ -76,32 +76,50 @@ def test_cons_func_app():
 
 def test_func_node():
     """Tests the transformation of an anonymous function expression."""
-    code = """define foo = \\x -> true
+    code = """def foo = \\x -> true
     return true"""
     fun = parse(code).defns["foo"]
-    assert isinstance(fun, _ast.FuncNode)
+    assert isinstance(fun, _ast.PureFuncNode)
     assert fun.args == ["x"]
     assert isinstance(fun.body, _ast.TrueNode)
 
 
-def test_func_binding():
-    """Tests the transformation of a function binding."""
-    code = """define not x = if x then false else true
+def test_pure_func_binding():
+    """Tests the transformation of a pure function binding."""
+    code = """def not x = if x then false else true
     return not true
     """
     prog = parse(code)
     fun = prog.defns["not"]
-    assert isinstance(fun, _ast.FuncNode)
+    assert isinstance(fun, _ast.PureFuncNode)
     assert fun.args == ["x"]
     assert isinstance(fun.body, _ast.IfElseNode)
 
 
+def test_eff_func_binding():
+    """Tests the transformation of an effectful function binding."""
+    code = """def faircoin x = flip 0.5
+    lift faircoin true
+    """
+    prog = parse(code)
+    fun = prog.defns["faircoin"]
+    assert isinstance(fun, _ast.EffFuncNode)
+
+
+def test_func_multiple_args():
+    """Tests applying a function to multiple arguments"""
+    code = """return f x y z"""
+    expr = parse_expr(code)
+    assert isinstance(expr, _ast.ReturnNode)
+    assert isinstance(expr.value, _ast.PureApplNode)
+
+
 def test_func_node_multiple_args():
     """Tests the transformation of an anonymous function expression."""
-    code = """define ifthenelse = \\x y z -> if x then y else z
+    code = """def ifthenelse = \\x y z -> if x then y else z
     return true"""
     fun = parse(code).defns["ifthenelse"]
-    assert isinstance(fun, _ast.FuncNode)
+    assert isinstance(fun, _ast.PureFuncNode)
     assert fun.args == ["x", "y", "z"]
     assert isinstance(fun.body, _ast.IfElseNode)
 
@@ -129,6 +147,21 @@ def test_return_expr():
     assert isinstance(expr.value, _ast.ConsNode)
     assert isinstance(expr.value.head, _ast.TrueNode)
     assert isinstance(expr.value.tail, _ast.NilNode)
+
+
+def test_lift_app():
+    """Tests the transformation of a lifed function application."""
+    code = """
+    def coin x = flip 0.5
+    lift coin true false
+    """
+    prog = parse(code)
+    assert isinstance(prog.defns["coin"], _ast.EffFuncNode)
+    assert isinstance(prog.expr, _ast.EffApplNode)
+    func = prog.expr.func
+    assert isinstance(func, _ast.VariableNode)
+    assert func.name == "coin"
+    assert prog.expr.args == [_ast.TrueNode(), _ast.FalseNode()]
 
 
 def test_bind_expr_simple():
@@ -215,7 +248,7 @@ def test_parsing_program_with_def():
     Test that a program is parsed along with its definitions.
     """
     code = """
-        define foo = true
+        def foo = true
         return foo
     """
     prog = parse(code)

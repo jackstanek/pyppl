@@ -6,9 +6,10 @@ from pyppl import ast
 pyppl_parser = Lark(
     r"""
     prog              : defn* eff_expr
-    defn              : var_defn | fun_defn
-    var_defn          : "define" VAR_OR_PARAM_NAME "=" expr
-    fun_defn          : "define" VAR_OR_PARAM_NAME args "=" expr
+    defn              : var_defn | pur_fun_defn | eff_fun_defn
+    var_defn          : "def" VAR_OR_PARAM_NAME "=" pure_expr
+    pur_fun_defn      : "def" VAR_OR_PARAM_NAME args "=" pure_expr
+    eff_fun_defn      : "def" VAR_OR_PARAM_NAME args "=" eff_expr
 
     expr              : eff_expr
                       | pure_expr // `expr` can be an effectful or a pure expression
@@ -18,21 +19,22 @@ pyppl_parser = Lark(
 
     non_bind_eff_expr : "flip" param -> flip_expr
                       | "return" pure_expr -> return_expr
+                      | "lift" application_expr -> eff_app
                       | "(" eff_expr ")" // Parenthesized effectful expression
 
     param             : FLOAT -> float_param
                       | VAR_OR_PARAM_NAME -> sym_param
 
     // pure_expr now handles application, 'if-then-else', and single atomic expressions
-    pure_expr         : if_then_else          // Highest precedence for if-then-else
-                      | application_expr      // Function application (e.g., 'f x y')
-                      | atom_pure_expr        // Single atomic pure expressions (e.g., 'x', 'true', '(f)')
+    pure_expr         : if_then_else
+                      | application_expr -> pure_app
+                      | atom_pure_expr
 
     if_then_else      : "if" pure_expr "then" pure_expr "else" non_if_pure_expr -> if_then_else
 
     // Function application: requires a function (first atom_pure_expr) followed by one or more arguments
     // Example: 'f x', 'g (h 1) y'
-    application_expr  : atom_pure_expr (atom_pure_expr)+ -> app
+    application_expr  : atom_pure_expr (atom_pure_expr)+ -> appl
 
     // These are the fundamental, non-compound pure expressions or those with specific keywords
     atom_pure_expr    : "true" -> true
@@ -41,14 +43,14 @@ pyppl_parser = Lark(
                       | "nil" -> nil
                       | "(" pure_expr ")" // Parenthesized pure expression
                       | VAR_OR_PARAM_NAME -> var // Variable reference
-                      | "\\" args "->" expr -> raw_fun // Anonymous function definition
+                      | "\\" args "->" pure_expr -> raw_pure_fun // Anonymous function definition
 
     // This rule is used in 'if-then-else' to ensure the 'else' branch doesn't start with another 'if'
     non_if_pure_expr  : application_expr | atom_pure_expr
 
     // The negative lookahead `(?!...)` ensures that the regex will not match
     // if the current position is at the start of any of the listed keywords.
-    VAR_OR_PARAM_NAME : /(?!if\b|then\b|else\b|true\b|false\b|cons\b|nil\b|flip\b|return\b|define\b)[a-zA-Z_][a-zA-Z0-9_]*/
+    VAR_OR_PARAM_NAME : /(?!if\b|then\b|else\b|true\b|false\b|cons\b|nil\b|flip\b|return\b|def\b|lift\b)[a-zA-Z_][a-zA-Z0-9_]*/
     args              : VAR_OR_PARAM_NAME+
 
     %import common.WS
@@ -57,7 +59,6 @@ pyppl_parser = Lark(
 
     """,
     start="prog",
-    parser="lalr",
 )
 
 
@@ -100,8 +101,8 @@ class PypplTransformer(Transformer):
         """
         return (var_name, val)
 
-    def fun_defn(self, fun_name, args, body):
-        """Handle the 'fun_defn' rule to create a function definition.
+    def pur_fun_defn(self, fun_name, args, body):
+        """Handle the 'fun_defn' rule to create a pure function definition.
 
         Args:
             fun_name: name of the function
@@ -111,7 +112,21 @@ class PypplTransformer(Transformer):
         Returns:
             tuple representing the binding
         """
-        fun = ast.FuncNode(args, body)
+        fun = ast.PureFuncNode(args, body)
+        return (fun_name, fun)
+
+    def eff_fun_defn(self, fun_name, args, body):
+        """Handle the 'fun_defn' rule to create a effectful function definition.
+
+        Args:
+            fun_name: name of the function
+            args: names of the arguments
+            body: function body
+
+        Returns:
+            tuple representing the binding
+        """
+        fun = ast.EffFuncNode(args, body)
         return (fun_name, fun)
 
     # Effectful Expressions (e)
@@ -156,14 +171,27 @@ class PypplTransformer(Transformer):
         """
         return ast.ReturnNode(pure_expr)
 
-    def raw_fun(self, args, body):
+    def raw_pure_fun(self, args, body):
         """Handles the raw (anonymous) function rule to construct lambdas.
 
         This corresponds to the syntax `\\x -> e`.
 
         Args:
+            args: function argument names
+            body: function body
         """
-        return ast.FuncNode(args, body)
+        return ast.PureFuncNode(args, body)
+
+    def raw_eff_fun(self, args, body):
+        """Handles the raw (anonymous) effectful function rule.
+
+        This corresponds to the syntax `\\x -> e`.
+
+        Args:
+            args: function argument names
+            body: function body
+        """
+        return ast.EffFuncNode(args, body)
 
     # Parameters
     def float_param(self, value):
@@ -220,17 +248,32 @@ class PypplTransformer(Transformer):
         """
         return ast.FalseNode()
 
-    def app(self, func, args):
-        """Handles the function application rule to create an ApplNode.
+    def pure_app(self, app):
+        """Handles the function application rule to create a PureApplNode.
 
         Args:
-            func: the callable function.
-            args: arguments to pass to the function.
+            app: the application
 
         Returns:
             An `ApplNode` representing the function application.
         """
-        return ast.PureApplNode(func, args)
+        fun, args = app
+        return ast.PureApplNode(fun, args)
+
+    def eff_app(self, app):
+        """Handles the function application rule to create an EffApplNode.
+
+        Args:
+            app: the application
+
+        Returns:
+            An `ApplNode` representing the function application.
+        """
+        fun, args = app
+        return ast.EffApplNode(fun, args)
+
+    def appl(self, *args):
+        return (args[0], list(args[1:]))
 
     def cons(self, head, tail):
         """Handles the 'cons' rule to create a ConsNode.
