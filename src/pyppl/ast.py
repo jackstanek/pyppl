@@ -343,8 +343,31 @@ class FuncNode(PureNode):
     Represents a function, either anonymous or not.
     """
 
-    formals: list[str]
-    body: ExpressionNode
+    args: list[str]
+    body: PureNode
+
+
+@dataclass(frozen=True)
+class PureApplNode(PureNode):
+    """
+    Represents a (pure) function application.
+
+    The function body must be a pure function.
+    """
+
+    func: PureNode
+    args: list[PureNode]
+
+    def eval(self, env: EvalEnv) -> PureNode:
+        eval_func = self.func.eval(env)
+        if not isinstance(eval_func, FuncNode):
+            raise ValueError(f"Tried to apply non-function value ({eval_func})")
+
+        eval_args = [arg.eval(env) for arg in self.args]
+        with env.local_scope():
+            for arg_name, eval_arg in zip(eval_func.args, eval_args):
+                env.add_binding(arg_name, eval_arg)
+            return eval_func.body.eval(env)
 
 
 # --- Expression (e) Classes ---
@@ -389,6 +412,14 @@ class EffectfulNode(ExpressionNode):
             value of the derivative at that point
         """
         return 0.0
+
+
+@dataclass(frozen=True)
+class EffApplNode(EffectfulNode):
+    """Effectful function application.
+
+    Reduces to monadic bind.
+    """
 
 
 @dataclass(frozen=True)

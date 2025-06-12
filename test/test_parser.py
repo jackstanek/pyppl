@@ -63,14 +63,37 @@ def test_cons_node():
     assert isinstance(cons_node.tail, _ast.FalseNode)
 
 
+def test_cons_func_app():
+    """Tests the transformation of a cons with a function application."""
+    code = "return cons (f true) false"
+    expr = parse_expr(code)
+    assert isinstance(expr, _ast.ReturnNode)
+    val = expr.value
+    assert isinstance(val, _ast.ConsNode)
+    assert isinstance(val.head, _ast.PureApplNode)
+    assert isinstance(val.tail, _ast.FalseNode)
+
+
 def test_func_node():
     """Tests the transformation of an anonymous function expression."""
     code = """define foo = \\x -> true
     return true"""
     fun = parse(code).defns["foo"]
     assert isinstance(fun, _ast.FuncNode)
-    assert fun.formals == ["x"]
+    assert fun.args == ["x"]
     assert isinstance(fun.body, _ast.TrueNode)
+
+
+def test_func_binding():
+    """Tests the transformation of a function binding."""
+    code = """define not x = if x then false else true
+    return not true
+    """
+    prog = parse(code)
+    fun = prog.defns["not"]
+    assert isinstance(fun, _ast.FuncNode)
+    assert fun.args == ["x"]
+    assert isinstance(fun.body, _ast.IfElseNode)
 
 
 def test_func_node_multiple_args():
@@ -79,7 +102,7 @@ def test_func_node_multiple_args():
     return true"""
     fun = parse(code).defns["ifthenelse"]
     assert isinstance(fun, _ast.FuncNode)
-    assert fun.formals == ["x", "y", "z"]
+    assert fun.args == ["x", "y", "z"]
     assert isinstance(fun.body, _ast.IfElseNode)
 
 
