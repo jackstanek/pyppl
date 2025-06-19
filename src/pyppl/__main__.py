@@ -11,6 +11,8 @@ from pyppl.learning import optimize
 from pyppl.params import ParamVector
 from pyppl.parser import parse
 
+LOGGER = logging.getLogger(__name__)
+
 
 def init_params(expr: ast.EffectfulNode) -> ParamVector:
     """Initialize parameters to random values."""
@@ -154,6 +156,10 @@ def main():
             samples = prog_ast.sample(
                 ParamVector(params, valtype=clamp), k=args.n_samples
             )
+
+        for sample in samples:
+            LOGGER.debug("%s", sample)
+
         with PickleDumper(args.data) as dumper:
             dumper.dump(samples)
 

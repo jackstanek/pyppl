@@ -1,0 +1,3 @@
+def maybe_cons x = y <- flip theta; return y
+
+lift maybe_cons true

@@ -415,22 +415,13 @@ class EffectfulNode(ExpressionNode):
 
 
 @dataclass(frozen=True)
-class EffFuncNode(EffectfulNode):
+class EffFuncNode(PureNode):
     """
     Represents an effectful function object.
     """
 
     args: list[str]
-    body: ExpressionNode
-
-    def sample(self, env: EvalEnv) -> PureNode:
-        return super().sample(env)
-
-    def possible_vals(self, env: EvalEnv) -> set[PureNode]:
-        return super().possible_vals(env)
-
-    def infer(self, env: EvalEnv, val: PureNode) -> float:
-        return super().infer(env, val)
+    body: EffectfulNode
 
 
 @dataclass(frozen=True)
@@ -441,17 +432,47 @@ class EffApplNode(EffectfulNode):
     Reduces to monadic bind.
     """
 
-    func: EffFuncNode
+    func: PureNode
     args: list[PureNode]
 
+    def eval_args(self, env: EvalEnv) -> list[PureNode]:
+        """Evaluate the args in some context."""
+        return [arg.eval(env) for arg in self.args]
+
+    def eval_func(self, env: EvalEnv) -> EffFuncNode:
+        func = self.func.eval(env)
+        if not isinstance(func, EffFuncNode):
+            raise ValueError(
+                f"tried to evaluate non-effectful function {func} in effectful context"
+            )
+        return func
+
+    @contextlib.contextmanager
+    def function_call_scope(self, env: EvalEnv):
+        func = self.eval_func(env)
+        try:
+            args = self.eval_args(env)
+            env.add_scope()
+            for argname, arg in zip(func.args, args):
+                env.add_binding(argname, arg)
+            yield
+        finally:
+            env.remove_scope()
+
     def sample(self, env: EvalEnv) -> PureNode:
-        return super().sample(env)
+        func = self.eval_func(env)
+        with self.function_call_scope(env):
+            return func.body.sample(env)
 
     def possible_vals(self, env: EvalEnv) -> set[PureNode]:
-        return super().possible_vals(env)
+        func = self.eval_func(env)
+        with self.function_call_scope(env):
+            return func.body.possible_vals(env)
 
     def infer(self, env: EvalEnv, val: PureNode) -> float:
-        return super().infer(env, val)
+        func = self.eval_func(env)
+        with self.function_call_scope(env):
+            return func.body.infer(env, val)
 
 
 @dataclass(frozen=True)
